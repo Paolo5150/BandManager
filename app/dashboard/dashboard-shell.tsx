@@ -1,6 +1,6 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { logout } from "@/lib/backend/dashboard-data";
+import NavigationLink from "./navigation-link";
 
 const navigation = [
   { label: "Overview", href: "/dashboard" },
@@ -29,9 +29,9 @@ export default function DashboardShell({ active, wide = false, children }: { act
         <nav className="mt-10 flex flex-1 flex-col gap-1" aria-label="Dashboard navigation">
           <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#a0a5aa]">Workspace</p>
           {navigation.map((item) => (
-            <Link key={item.href} href={item.href} aria-current={item.label === active ? "page" : undefined} className={`rounded-xl px-3 py-3 text-sm font-medium transition ${item.label === active ? "bg-[#fff1e9] text-[#e95a27]" : "text-[#69727d] hover:bg-[#f8f5f1] hover:text-[#17202a]"}`}>
+            <NavigationLink key={item.href} href={item.href} active={item.label === active}>
               {item.label}
-            </Link>
+            </NavigationLink>
           ))}
         </nav>
         <form action={logout} className="border-t border-[#eee9e3] pt-4">
@@ -49,9 +49,9 @@ export default function DashboardShell({ active, wide = false, children }: { act
           </div>
           <nav className="flex gap-1 overflow-x-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Mobile dashboard navigation">
             {navigation.map((item) => (
-              <Link key={item.href} href={item.href} aria-current={item.label === active ? "page" : undefined} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium ${item.label === active ? "bg-[#fff1e9] text-[#e95a27]" : "text-[#69727d]"}`}>
+              <NavigationLink key={item.href} href={item.href} active={item.label === active} mobile>
                 {item.label}
-              </Link>
+              </NavigationLink>
             ))}
           </nav>
         </header>

@@ -30,10 +30,37 @@ export async function searchDeezerSongs(query: string): Promise<{ songs?: Deezer
   const trimmed = query.trim();
   if (!trimmed) return { error: "Enter part of a song title or artist." };
   try {
-    const response = await fetch(`https://api.deezer.com/search?q=${encodeURIComponent(trimmed)}&limit=8`, { cache: "no-store" });
-    const body = (await response.json().catch(() => null)) as { data?: DeezerSong[] } | null;
-    if (!response.ok || !body?.data) return { error: "Unable to search Deezer." };
-    return { songs: body.data };
+    async function request(searchQuery: string) {
+      const response = await fetch(
+        `https://api.deezer.com/search?q=${encodeURIComponent(searchQuery)}&limit=25`,
+        { cache: "no-store" },
+      );
+      const body = (await response.json().catch(() => null)) as {
+        data?: DeezerSong[];
+        error?: { message?: string };
+      } | null;
+      return { response, body };
+    }
+
+    const first = await request(trimmed);
+    if (!first.response.ok || first.body?.error) {
+      return { error: first.body?.error?.message ?? `Deezer search failed (${first.response.status}).` };
+    }
+
+    if (first.body?.data?.length) return { songs: first.body.data };
+
+    // Deezer can be more reliable when punctuation and extra search terms are
+    // removed, especially for requests coming through a production proxy.
+    const simplified = trimmed.replace(/[()[\]{}]/g, " ").replace(/\s+/g, " ").trim();
+    if (simplified && simplified !== trimmed) {
+      const fallback = await request(simplified);
+      if (!fallback.response.ok || fallback.body?.error) {
+        return { error: fallback.body?.error?.message ?? `Deezer search failed (${fallback.response.status}).` };
+      }
+      return { songs: fallback.body?.data ?? [] };
+    }
+
+    return { songs: [] };
   } catch {
     return { error: "Unable to reach Deezer." };
   }
