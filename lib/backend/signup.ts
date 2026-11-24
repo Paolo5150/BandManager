@@ -12,6 +12,7 @@ type SignupResult = {
   error?: string;
   userId?: string;
   hasBand?: boolean;
+  displayName?: string;
 };
 
 export async function signup({
@@ -55,14 +56,33 @@ export async function signup({
   }
 
   const body = (await response.json().catch(() => null)) as
-    | { user?: { id?: string }; access_token?: string }
+    | { id?: string; user?: { id?: string }; access_token?: string }
     | null;
 
-  if (!body?.user?.id) {
-    return { error: "Account was created, but no user ID was returned." };
+  let userId = body?.user?.id ?? body?.id;
+
+  if (!userId && process.env.SUPABASE_SECRET_KEY) {
+    const usersResponse = await fetch(
+      `${supabaseUrl}/auth/v1/admin/users?per_page=1000`,
+      {
+        headers: {
+          apikey: process.env.SUPABASE_SECRET_KEY,
+          Authorization: `Bearer ${process.env.SUPABASE_SECRET_KEY}`,
+        },
+        cache: "no-store",
+      },
+    );
+    const usersBody = (await usersResponse.json().catch(() => null)) as
+      | { users?: { id: string; phone?: string }[] }
+      | null;
+    userId = usersBody?.users?.find((user) => user.phone === phone)?.id;
   }
 
-  if (body.access_token) {
+  if (!userId) {
+    return { error: "Account was created, but its Auth user ID could not be found." };
+  }
+
+  if (body?.access_token) {
     (await cookies()).set("band-manager-access-token", body.access_token, {
       httpOnly: true,
       sameSite: "lax",
@@ -71,5 +91,5 @@ export async function signup({
     });
   }
 
-  return { userId: body.user.id };
+  return { userId, displayName: name };
 }

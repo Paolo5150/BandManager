@@ -8,7 +8,7 @@ import { login } from "@/lib/backend/login";
 
 type Mode = "signup" | "login";
 
-export default function AuthForm() {
+export default function AuthForm({ inviteBandId: initialInviteBandId }: { inviteBandId?: string }) {
   const [mode, setMode] = useState<Mode>("signup");
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -17,6 +17,7 @@ export default function AuthForm() {
   const [bandName, setBandName] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState("");
+  const inviteBandId = initialInviteBandId ?? "";
   const router = useRouter();
   const isSignup = mode === "signup";
 
@@ -43,6 +44,23 @@ export default function AuthForm() {
       if (result.error) {
         setIsError(true);
         setMessage(result.error);
+      } else if (inviteBandId && result.userId) {
+        const membershipResult = await createBand(
+          "",
+          result.userId,
+          isSignup
+            ? String(formData.get("name") ?? "").trim()
+            : result.displayName ?? "",
+          String(formData.get("phone") ?? "").trim(),
+          inviteBandId,
+        );
+
+        if (membershipResult.error) {
+          setIsError(true);
+          setMessage(membershipResult.error);
+        } else {
+          router.push("/dashboard");
+        }
       } else if (result.userId && (isSignup || !result.hasBand)) {
         setUserId(result.userId);
         setDisplayName(isSignup ? String(formData.get("name") ?? "").trim() : "");
@@ -64,7 +82,7 @@ export default function AuthForm() {
     if (!userId) return;
     setIsSubmitting(true);
     setIsError(false);
-    const result = await createBand(bandName.trim(), userId, displayName, phoneNumber);
+    const result = await createBand(bandName.trim(), userId, displayName, phoneNumber, inviteBandId || undefined);
     if (result.error) {
       setMessage(result.error);
       setIsError(true);

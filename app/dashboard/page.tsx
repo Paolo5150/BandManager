@@ -2,6 +2,8 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { getDashboardData, logout } from "@/lib/backend/dashboard-data";
 
+export const instant = false;
+
 const navigation = [
   { label: "Overview", href: "/dashboard" },
   { label: "Members", href: "/dashboard/members" },

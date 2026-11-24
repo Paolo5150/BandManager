@@ -6,6 +6,7 @@ type LoginResult = {
   error?: string;
   userId?: string;
   hasBand?: boolean;
+  displayName?: string;
 };
 
 export async function login(
@@ -31,7 +32,7 @@ export async function login(
   });
 
   const authBody = (await authResponse.json().catch(() => null)) as
-    | { user?: { id?: string }; access_token?: string; msg?: string; error_description?: string }
+    | { user?: { id?: string; user_metadata?: { name?: string } }; access_token?: string; msg?: string; error_description?: string }
     | null;
 
   if (!authResponse.ok || !authBody?.user?.id) {
@@ -74,5 +75,6 @@ export async function login(
   return {
     userId: authBody.user.id,
     hasBand: Boolean(memberships?.length),
+    displayName: authBody.user.user_metadata?.name ?? "",
   };
 }
