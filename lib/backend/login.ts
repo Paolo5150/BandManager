@@ -2,6 +2,7 @@
 
 import { cookies } from "next/headers";
 import { saveSession } from "@/lib/backend/session";
+import { normalizePhoneNumber } from "@/lib/phone";
 
 type LoginResult = {
   error?: string;
@@ -15,6 +16,11 @@ export async function login(
   phone: string,
   password: string,
 ): Promise<LoginResult> {
+  const normalizedPhone = normalizePhoneNumber(phone);
+  if (!normalizedPhone) {
+    return { error: "Enter a valid Australian mobile number, for example 0412 345 678." };
+  }
+
   const supabaseUrl = process.env.SUPABASE_URL;
   const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
   const secretKey = process.env.SUPABASE_SECRET_KEY;
@@ -29,7 +35,7 @@ export async function login(
       apikey: publishableKey,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ phone, password }),
+    body: JSON.stringify({ phone: normalizedPhone, password }),
     cache: "no-store",
   });
 

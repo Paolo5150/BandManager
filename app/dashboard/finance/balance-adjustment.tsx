@@ -2,15 +2,19 @@
 
 import { useState } from "react";
 import { addBalanceAdjustment } from "@/lib/backend/finance";
+import LoadingSpinner from "../loading-spinner";
 
 export default function BalanceAdjustment({ membershipId, open, onOpen, onClose }: { membershipId: string; open: boolean; onOpen: () => void; onClose: () => void }) {
   const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setSaving(true);
     const result = await addBalanceAdjustment(new FormData(event.currentTarget));
     if (result.error) setMessage(result.error);
     else { setMessage(""); onClose(); }
+    setSaving(false);
   }
 
   if (!open) {
@@ -29,7 +33,7 @@ export default function BalanceAdjustment({ membershipId, open, onOpen, onClose 
       </label>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button type="button" onClick={() => { setMessage(""); onClose(); }} className="h-10 rounded-lg bg-white text-sm font-semibold text-[#303942] ring-1 ring-[#e8e1e9]">Cancel</button>
-        <button type="submit" className="h-10 rounded-lg bg-[#ff6b35] text-sm font-semibold text-white">Set balance</button>
+        <button type="submit" disabled={saving} className="flex h-10 items-center justify-center rounded-lg bg-[#ff6b35] text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{saving ? <LoadingSpinner label="Saving..." /> : "Set balance"}</button>
       </div>
       {message && <p className="mt-2 text-xs text-[#a04420]">{message}</p>}
     </form>

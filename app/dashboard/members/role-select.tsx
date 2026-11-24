@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { updateMemberRole } from "@/lib/backend/members";
 import { CloseIcon } from "../icons";
+import LoadingSpinner from "../loading-spinner";
 
 export default function RoleSelect({ membershipId, role }: { membershipId: string; role: string }) {
   const [selectedRole, setSelectedRole] = useState(role);
@@ -32,7 +33,7 @@ export default function RoleSelect({ membershipId, role }: { membershipId: strin
       {changed && (
         <>
           <button type="button" onClick={save} disabled={isSaving} title="Save role" aria-label="Save role" className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#eefbf4] text-[#24734b] hover:bg-[#dff5e9] disabled:opacity-50">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-4 w-4"><path d="M20 6 9 17l-5-5" /></svg>
+            {isSaving ? <LoadingSpinner label="" /> : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-4 w-4"><path d="M20 6 9 17l-5-5" /></svg>}
           </button>
           <button type="button" onClick={discard} disabled={isSaving} title="Discard role change" aria-label="Discard role change" className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#f5f2ee] text-[#69727d] hover:bg-[#ebe6df] disabled:opacity-50">
             <CloseIcon className="h-4 w-4" />

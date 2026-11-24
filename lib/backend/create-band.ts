@@ -1,5 +1,7 @@
 "use server";
 
+import { normalizePhoneNumber } from "@/lib/phone";
+
 type CreateBandResult = { error?: string; bandId?: string };
 
 export async function createBand(
@@ -9,6 +11,11 @@ export async function createBand(
   phone: string,
   existingBandId?: string,
 ): Promise<CreateBandResult> {
+  const normalizedPhone = normalizePhoneNumber(phone);
+  if (!normalizedPhone) {
+    return { error: "Enter a valid Australian mobile number, for example 0412 345 678." };
+  }
+
   const supabaseUrl = process.env.SUPABASE_URL;
   const secretKey = process.env.SUPABASE_SECRET_KEY;
 
@@ -29,20 +36,29 @@ export async function createBand(
     cache: "no-store",
   });
 
-  const bands = bandResponse
-    ? ((await bandResponse.json().catch(() => null)) as
-        | { id: string }[]
-        | { message?: string; hint?: string }
-        | null)
+  const bandBody = bandResponse ? await bandResponse.json().catch(() => null) : null;
+  const bands = Array.isArray(bandBody) ? (bandBody as { id?: string }[]) : null;
+  const bandError = !Array.isArray(bandBody) && bandBody && typeof bandBody === "object"
+    ? (bandBody as { message?: string; hint?: string })
     : null;
-  const band = existingBandId ? { id: existingBandId } : Array.isArray(bands) ? bands[0] : undefined;
+  const band = existingBandId ? { id: existingBandId } : bands?.find((item) => item.id);
 
   if ((!existingBandId && !bandResponse?.ok) || !band) {
     return {
-      error:
-        (!Array.isArray(bands) && (bands?.message || bands?.hint)) ||
-        "Unable to create the band.",
+      error: bandError?.message ?? bandError?.hint ?? "Unable to create the band.",
     };
+  }
+
+  // Confirm the foreign-key target exists before attempting the membership insert.
+  if (existingBandId) {
+    const bandCheckResponse = await fetch(
+      `${supabaseUrl}/rest/v1/bands?select=id&id=eq.${encodeURIComponent(existingBandId)}&limit=1`,
+      { headers, cache: "no-store" },
+    );
+    const existingBands = (await bandCheckResponse.json().catch(() => [])) as { id?: string }[];
+    if (!bandCheckResponse.ok || existingBands[0]?.id !== existingBandId) {
+      return { error: "The invitation refers to a band that no longer exists." };
+    }
   }
 
   const membershipRole = existingBandId ? "member" : "admin";
@@ -55,7 +71,7 @@ export async function createBand(
       band_id: band.id,
       role: membershipRole,
       display_name: displayName,
-      phone,
+      phone: normalizedPhone,
       confirmed: !existingBandId,
     }),
     cache: "no-store",

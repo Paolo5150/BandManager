@@ -4,10 +4,11 @@ import { FormEvent, useState } from "react";
 import { signup } from "@/lib/backend/signup";
 import { createBand } from "@/lib/backend/create-band";
 import { login } from "@/lib/backend/login";
+import LoadingSpinner from "./dashboard/loading-spinner";
 
 type Mode = "signup" | "login";
 
-export default function AuthForm({ inviteBandId: initialInviteBandId }: { inviteBandId?: string }) {
+export default function AuthForm({ inviteBandId: initialInviteBandId, invitedBandName }: { inviteBandId?: string; invitedBandName?: string }) {
   const [mode, setMode] = useState<Mode>("signup");
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -103,6 +104,13 @@ export default function AuthForm({ inviteBandId: initialInviteBandId }: { invite
         <span className="text-xl font-semibold tracking-tight text-[#17202a]">BandManager</span>
       </div>
       <div className="rounded-3xl border border-[#e8e1d9] bg-white p-7 shadow-[0_24px_70px_rgba(52,38,24,0.10)] sm:p-9">
+        {initialInviteBandId && invitedBandName && !userId && (
+          <div className="mb-6 rounded-2xl border border-[#f0d4c5] bg-[#fff8f3] px-4 py-3.5" role="status">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#e95a27]">Band invitation</p>
+            <p className="mt-1 text-sm leading-5 text-[#69727d]">You&apos;ve been invited to join <strong className="font-semibold text-[#17202a]">{invitedBandName}</strong>.</p>
+            <p className="mt-1 text-xs text-[#8a929a]">Sign up or log in to accept the invitation.</p>
+          </div>
+        )}
         {userId ? (
           <>
             <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-[#ff6b35]">One last step</p>
@@ -110,7 +118,7 @@ export default function AuthForm({ inviteBandId: initialInviteBandId }: { invite
             <p className="mt-2 text-sm leading-6 text-[#69727d]">Give your band a name to get started.</p>
             <form onSubmit={handleBandSubmit} className="mt-7 space-y-5">
               <label className="block text-sm font-medium text-[#303942]">Band name<input value={bandName} onChange={(event) => setBandName(event.target.value)} type="text" placeholder="The Midnight Signals" required className="mt-2 h-12 w-full rounded-xl border border-[#ddd8d1] bg-[#fcfbf9] px-4 text-[#17202a] outline-none focus:border-[#ff6b35] focus:ring-4 focus:ring-orange-100" /></label>
-              <button type="submit" disabled={isSubmitting} className="h-12 w-full rounded-xl bg-[#ff6b35] text-sm font-semibold text-white disabled:opacity-60">{isSubmitting ? "Creating band..." : "Create band"}</button>
+              <button type="submit" disabled={isSubmitting} className="h-12 w-full rounded-xl bg-[#ff6b35] text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">{isSubmitting ? <LoadingSpinner label="Creating band..." /> : "Create band"}</button>
             </form>
           </>
         ) : <>
@@ -128,9 +136,9 @@ export default function AuthForm({ inviteBandId: initialInviteBandId }: { invite
         </div>
         <form onSubmit={handleSubmit} className="space-y-5">
           {isSignup && <label className="block text-sm font-medium text-[#303942]">Your name<input name="name" type="text" autoComplete="name" placeholder="Alex Morgan" required className="mt-2 h-12 w-full rounded-xl border border-[#ddd8d1] bg-[#fcfbf9] px-4 text-[#17202a] outline-none transition placeholder:text-[#a5aaaf] focus:border-[#ff6b35] focus:ring-4 focus:ring-orange-100" /></label>}
-          <label className="block text-sm font-medium text-[#303942]">Phone number<input name="phone" type="tel" autoComplete="tel" placeholder="+1 (555) 000-0000" required className="mt-2 h-12 w-full rounded-xl border border-[#ddd8d1] bg-[#fcfbf9] px-4 text-[#17202a] outline-none transition placeholder:text-[#a5aaaf] focus:border-[#ff6b35] focus:ring-4 focus:ring-orange-100" /></label>
+          <label className="block text-sm font-medium text-[#303942]">Phone number<input name="phone" type="tel" autoComplete="tel" placeholder="04xx xxx xxx" required className="mt-2 h-12 w-full rounded-xl border border-[#ddd8d1] bg-[#fcfbf9] px-4 text-[#17202a] outline-none transition placeholder:text-[#a5aaaf] focus:border-[#ff6b35] focus:ring-4 focus:ring-orange-100" /></label>
           <label className="block text-sm font-medium text-[#303942]">Password<input name="password" type="password" autoComplete={isSignup ? "new-password" : "current-password"} placeholder="At least 8 characters" minLength={8} required className="mt-2 h-12 w-full rounded-xl border border-[#ddd8d1] bg-[#fcfbf9] px-4 text-[#17202a] outline-none transition placeholder:text-[#a5aaaf] focus:border-[#ff6b35] focus:ring-4 focus:ring-orange-100" /></label>
-          <button type="submit" disabled={isSubmitting} className="h-12 w-full rounded-xl bg-[#ff6b35] px-5 text-sm font-semibold text-white shadow-lg shadow-orange-100 transition hover:bg-[#e95a27] focus:outline-none focus:ring-4 focus:ring-orange-200 disabled:cursor-not-allowed disabled:opacity-60">{isSubmitting ? "Creating account..." : isSignup ? "Create my account" : "Log in to BandManager"}</button>
+          <button type="submit" disabled={isSubmitting} className="flex h-12 w-full items-center justify-center rounded-xl bg-[#ff6b35] px-5 text-sm font-semibold text-white shadow-lg shadow-orange-100 transition hover:bg-[#e95a27] focus:outline-none focus:ring-4 focus:ring-orange-200 disabled:cursor-not-allowed disabled:opacity-60">{isSubmitting ? <LoadingSpinner label={isSignup ? "Creating account..." : "Logging in..."} /> : isSignup ? "Create my account" : "Log in to BandManager"}</button>
         </form>
         {message && <p className={`mt-5 rounded-xl px-4 py-3 text-sm leading-5 ${isError ? "bg-[#fff4ed] text-[#a04420]" : "bg-[#eefbf4] text-[#24734b]"}`} role="status">{message}</p>}
         </>}
