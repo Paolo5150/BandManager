@@ -8,6 +8,8 @@ type SignupInput = {
 
 type SignupResult = {
   error?: string;
+  userId?: string;
+  hasBand?: boolean;
 };
 
 export async function signup({
@@ -50,5 +52,13 @@ export async function signup({
     };
   }
 
-  return {};
+  const body = (await response.json().catch(() => null)) as
+    | { user?: { id?: string } }
+    | null;
+
+  if (!body?.user?.id) {
+    return { error: "Account was created, but no user ID was returned." };
+  }
+
+  return { userId: body.user.id };
 }
