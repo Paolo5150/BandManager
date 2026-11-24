@@ -17,9 +17,9 @@ async function getContext() {
   const user = (await auth.json().catch(() => null)) as { id?: string } | null;
   if (!auth.ok || !user?.id) return null;
   const headers = { apikey: key, Authorization: `Bearer ${key}` };
-  const membership = await fetch(`${url}/rest/v1/memberships?select=band_id&user_id=eq.${encodeURIComponent(user.id)}&confirmed=eq.true&limit=1`, { headers, cache: "no-store" });
-  const rows = (await membership.json().catch(() => null)) as { band_id?: string }[] | null;
-  return rows?.[0]?.band_id ? { url, headers, userId: user.id, bandId: rows[0].band_id } : null;
+  const membership = await fetch(`${url}/rest/v1/memberships?select=band_id,role&user_id=eq.${encodeURIComponent(user.id)}&confirmed=eq.true&limit=1`, { headers, cache: "no-store" });
+  const rows = (await membership.json().catch(() => null)) as { band_id?: string; role?: string }[] | null;
+  return rows?.[0]?.band_id ? { url, headers, userId: user.id, bandId: rows[0].band_id, isAdmin: rows[0].role === "admin" } : null;
 }
 
 export async function getScheduleEvents(): Promise<ScheduleEvent[]> {
@@ -32,14 +32,22 @@ export async function getScheduleEvents(): Promise<ScheduleEvent[]> {
 export async function updateScheduleEvent(formData: FormData): Promise<{ error?: string }> {
   const context = await getContext();
   const id = String(formData.get("eventId") ?? "");
+  const seriesId = String(formData.get("seriesId") ?? "");
+  const scope = String(formData.get("editScope") ?? "instance");
   if (!context || !id) return { error: "You must be a confirmed band member." };
+  if (!context.isAdmin) return { error: "Only admins can modify events." };
   const date = String(formData.get("date") ?? "");
   const startsAt = String(formData.get("startsAt") ?? "");
   const endsAt = String(formData.get("endsAt") ?? "");
   const start = new Date(`${date}T${startsAt}`);
   const end = new Date(`${date}T${endsAt}`);
   if (!date || !startsAt || !endsAt || end <= start) return { error: "Enter a valid date and time range." };
-  const response = await fetch(`${context.url}/rest/v1/events?id=eq.${encodeURIComponent(id)}&band_id=eq.${encodeURIComponent(context.bandId)}`, { method: "PATCH", headers: { ...context.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ type: String(formData.get("type") ?? "practice"), title: String(formData.get("title") ?? "").trim() || "Event", starts_at: start.toISOString(), ends_at: end.toISOString(), location: String(formData.get("location") ?? "").trim() || null, notes: String(formData.get("notes") ?? "").trim() || null, cost_cents: Math.round(Math.max(0, Number(formData.get("costCents") ?? "0") || 0) * 100) }), cache: "no-store" });
+  const hasFinanceFields = formData.has("costCents");
+  if (!context.isAdmin && hasFinanceFields) return { error: "Only admins can edit event finance details." };
+  const query = scope === "series" && seriesId ? `series_id=eq.${encodeURIComponent(seriesId)}&band_id=eq.${encodeURIComponent(context.bandId)}` : `id=eq.${encodeURIComponent(id)}&band_id=eq.${encodeURIComponent(context.bandId)}`;
+  const payload: Record<string, unknown> = { type: String(formData.get("type") ?? "practice"), title: String(formData.get("title") ?? "").trim() || "Event", starts_at: start.toISOString(), ends_at: end.toISOString(), location: String(formData.get("location") ?? "").trim() || null, notes: String(formData.get("notes") ?? "").trim() || null };
+  if (context.isAdmin) payload.cost_cents = Math.round(Math.max(0, Number(formData.get("costCents") ?? "0") || 0) * 100);
+  const response = await fetch(`${context.url}/rest/v1/events?${query}`, { method: "PATCH", headers: { ...context.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(payload), cache: "no-store" });
   if (!response.ok) return { error: "Unable to update the event." };
   revalidatePath("/dashboard/schedule");
   return {};
@@ -50,6 +58,7 @@ export async function deleteScheduleEvent(formData: FormData): Promise<{ error?:
   const eventId = String(formData.get("eventId") ?? "");
   const seriesId = String(formData.get("seriesId") ?? "");
   if (!context || !eventId) return { error: "You must be a confirmed band member." };
+  if (!context.isAdmin) return { error: "Only admins can delete events." };
   const query = seriesId ? `series_id=eq.${encodeURIComponent(seriesId)}&band_id=eq.${encodeURIComponent(context.bandId)}` : `id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}`;
   const response = await fetch(`${context.url}/rest/v1/events?${query}`, { method: "DELETE", headers: context.headers, cache: "no-store" });
   if (!response.ok) return { error: "Unable to delete the event." };
@@ -71,9 +80,15 @@ export async function getScheduleMembers(): Promise<ScheduleMember[]> {
   return response.ok ? rows.map((row) => ({ id: row.id, name: row.display_name || "Unnamed member" })) : [];
 }
 
+export async function getScheduleAccess(): Promise<boolean> {
+  const context = await getContext();
+  return context?.isAdmin ?? false;
+}
+
 export async function createScheduleEvent(formData: FormData): Promise<{ error?: string }> {
   const context = await getContext();
   if (!context) return { error: "You must be a confirmed band member." };
+  if (!context.isAdmin) return { error: "Only admins can add events." };
   const type = String(formData.get("type") ?? "practice");
   const title = String(formData.get("title") ?? "").trim() || (type === "gig" ? "Gig" : "Practice");
   const date = String(formData.get("date") ?? "");
@@ -86,6 +101,8 @@ export async function createScheduleEvent(formData: FormData): Promise<{ error?:
   const repeatUntil = String(formData.get("repeatUntil") ?? "");
   const location = String(formData.get("location") ?? "").trim() || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
+  const hasFinanceFields = formData.has("costCents") || Array.from(formData.keys()).some((key) => key.startsWith("charge_"));
+  if (!context.isAdmin && hasFinanceFields) return { error: "Only admins can add event finance details." };
   const costCents = Math.round(Math.max(0, Number(formData.get("costCents") ?? "0") || 0) * 100);
   const chargeRows = Array.from(formData.entries()).filter(([key]) => key.startsWith("charge_")).map(([key, value]) => ({ membership_id: key.slice(7), amount_cents: Math.round(Math.max(0, Number(value) || 0) * 100) }));
   if (chargeRows.reduce((sum, row) => sum + row.amount_cents, 0) !== costCents) return { error: "Member charges must add up exactly to the event cost." };
