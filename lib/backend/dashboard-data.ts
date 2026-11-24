@@ -19,9 +19,11 @@ export async function getDashboardData(): Promise<DashboardData> {
   const supabaseUrl = process.env.SUPABASE_URL;
   const secretKey = process.env.SUPABASE_SECRET_KEY;
 
-  if (!token || !supabaseUrl || !secretKey) {
+  if (!supabaseUrl || !secretKey) {
     return { userName: "Band member", bandName: "Your band" };
   }
+  // Not signed in (or session expired): go to login, not "waiting for confirmation".
+  if (!token) redirect("/");
 
   const authResponse = await fetch(`${supabaseUrl}/auth/v1/user`, {
     headers: {
@@ -33,9 +35,11 @@ export async function getDashboardData(): Promise<DashboardData> {
   const authUser = (await authResponse.json().catch(() => null)) as
     | { id?: string; user_metadata?: { name?: string } }
     | null;
+  if (!authResponse.ok || !authUser?.id) redirect("/");
 
+  // Prefer a confirmed membership if the user has more than one.
   const membershipResponse = await fetch(
-    `${supabaseUrl}/rest/v1/memberships?select=confirmed,bands(name)&user_id=eq.${encodeURIComponent(authUser?.id ?? "")}&limit=1`,
+    `${supabaseUrl}/rest/v1/memberships?select=confirmed,bands(name)&user_id=eq.${encodeURIComponent(authUser.id)}&order=confirmed.desc.nullslast&limit=1`,
     {
       headers: {
         apikey: secretKey,
@@ -45,7 +49,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     },
   );
   if (!membershipResponse.ok) {
-    redirect("/pending-confirmation");
+    throw new Error("Unable to load your band membership.");
   }
 
   const memberships = (await membershipResponse.json().catch(() => null)) as

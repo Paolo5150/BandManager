@@ -49,7 +49,7 @@ export async function login(
   await saveSession(authBody.access_token, authBody.refresh_token);
 
   const membershipResponse = await fetch(
-    `${supabaseUrl}/rest/v1/memberships?select=id,confirmed&user_id=eq.${encodeURIComponent(authBody.user.id)}&limit=1`,
+    `${supabaseUrl}/rest/v1/memberships?select=id,confirmed&user_id=eq.${encodeURIComponent(authBody.user.id)}&order=confirmed.desc.nullslast&limit=1`,
     {
       headers: {
         apikey: secretKey,

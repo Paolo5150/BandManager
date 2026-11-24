@@ -111,11 +111,31 @@ export async function updateScheduleEvent(formData: FormData): Promise<{ error?:
   if (!date || !startsAt || !endsAt || end <= start) return { error: "Enter a valid date and time range." };
   const hasFinanceFields = formData.has("costCents");
   if (!context.isAdmin && hasFinanceFields) return { error: "Only admins can edit event finance details." };
-  const query = scope === "series" && seriesId ? `series_id=eq.${encodeURIComponent(seriesId)}&band_id=eq.${encodeURIComponent(context.bandId)}` : `id=eq.${encodeURIComponent(id)}&band_id=eq.${encodeURIComponent(context.bandId)}`;
-  const payload: Record<string, unknown> = { type: String(formData.get("type") ?? "practice"), title: String(formData.get("title") ?? "").trim() || "Event", starts_at: start.toISOString(), ends_at: end.toISOString(), location: String(formData.get("location") ?? "").trim() || null, notes: String(formData.get("notes") ?? "").trim() || null };
-  if (context.isAdmin) payload.cost_cents = Math.round(Math.max(0, Number(formData.get("costCents") ?? "0") || 0) * 100);
-  const response = await fetch(`${context.url}/rest/v1/events?${query}`, { method: "PATCH", headers: { ...context.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(payload), cache: "no-store" });
-  if (!response.ok) return { error: "Unable to update the event." };
+  const band = `band_id=eq.${encodeURIComponent(context.bandId)}`;
+  const patchHeaders = { ...context.headers, "Content-Type": "application/json", Prefer: "return=minimal" };
+  const shared: Record<string, unknown> = { type: String(formData.get("type") ?? "practice"), title: String(formData.get("title") ?? "").trim() || "Event", location: String(formData.get("location") ?? "").trim() || null, notes: String(formData.get("notes") ?? "").trim() || null, cost_cents: Math.round(Math.max(0, Number(formData.get("costCents") ?? "0") || 0) * 100) };
+
+  if (scope !== "series" || !seriesId) {
+    const response = await fetch(`${context.url}/rest/v1/events?id=eq.${encodeURIComponent(id)}&${band}&status=eq.scheduled`, { method: "PATCH", headers: patchHeaders, body: JSON.stringify({ ...shared, starts_at: start.toISOString(), ends_at: end.toISOString() }), cache: "no-store" });
+    if (!response.ok) return { error: `Unable to update the event. ${await response.text().catch(() => "")}`.trim() };
+    revalidatePath("/dashboard/schedule");
+    return {};
+  }
+
+  // Series: keep each occurrence on its own date, apply only the new time of day.
+  const seriesResponse = await fetch(`${context.url}/rest/v1/events?select=id,starts_at&series_id=eq.${encodeURIComponent(seriesId)}&${band}&status=eq.scheduled`, { headers: context.headers, cache: "no-store" });
+  const occurrences = (await seriesResponse.json().catch(() => [])) as { id: string; starts_at: string }[];
+  if (!seriesResponse.ok) return { error: "Unable to load the series." };
+  const durationMs = end.getTime() - start.getTime();
+  const results = await Promise.all(occurrences.map((occurrence) => {
+    const day = new Date(occurrence.starts_at);
+    const localDate = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
+    const occurrenceStart = new Date(`${localDate}T${startsAt}`);
+    const body = { ...shared, starts_at: occurrenceStart.toISOString(), ends_at: new Date(occurrenceStart.getTime() + durationMs).toISOString() };
+    return fetch(`${context.url}/rest/v1/events?id=eq.${encodeURIComponent(occurrence.id)}&${band}`, { method: "PATCH", headers: patchHeaders, body: JSON.stringify(body), cache: "no-store" });
+  }));
+  const failed = results.find((response) => !response.ok);
+  if (failed) return { error: `Unable to update the series. ${await failed.text().catch(() => "")}`.trim() };
   revalidatePath("/dashboard/schedule");
   return {};
 }
