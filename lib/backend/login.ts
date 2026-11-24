@@ -1,5 +1,7 @@
 "use server";
 
+import { cookies } from "next/headers";
+
 type LoginResult = {
   error?: string;
   userId?: string;
@@ -29,7 +31,7 @@ export async function login(
   });
 
   const authBody = (await authResponse.json().catch(() => null)) as
-    | { user?: { id?: string }; msg?: string; error_description?: string }
+    | { user?: { id?: string }; access_token?: string; msg?: string; error_description?: string }
     | null;
 
   if (!authResponse.ok || !authBody?.user?.id) {
@@ -39,6 +41,15 @@ export async function login(
         authBody?.error_description ??
         "Unable to log in with those credentials.",
     };
+  }
+
+  if (authBody.access_token) {
+    (await cookies()).set("band-manager-access-token", authBody.access_token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+    });
   }
 
   const membershipResponse = await fetch(

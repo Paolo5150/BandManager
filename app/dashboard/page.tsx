@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { connection } from "next/server";
+import { getDashboardData, logout } from "@/lib/backend/dashboard-data";
 
 const navigation = [
   { label: "Overview", href: "/dashboard" },
@@ -9,7 +11,10 @@ const navigation = [
   { label: "Finance", href: "/dashboard/finance" },
 ];
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  await connection();
+  const { userName, bandName } = await getDashboardData();
+
   return (
     <div className="flex min-h-screen bg-[#f8f5f1]">
       <aside className="flex w-64 shrink-0 flex-col border-r border-[#e8e1d9] bg-white px-5 py-6">
@@ -41,14 +46,22 @@ export default function DashboardPage() {
 
         <div className="border-t border-[#eee9e3] px-3 pt-5">
           <p className="text-xs text-[#a0a5aa]">Current band</p>
-          <p className="mt-1 truncate text-sm font-semibold text-[#303942]">Your band</p>
+          <p className="mt-1 truncate text-sm font-semibold text-[#303942]">{bandName}</p>
+          <form action={logout}>
+            <button
+              type="submit"
+              className="mt-5 block w-full rounded-xl px-3 py-3 text-left text-sm font-medium text-[#69727d] transition hover:bg-[#f8f5f1] hover:text-[#17202a]"
+            >
+              Log out
+            </button>
+          </form>
         </div>
       </aside>
 
       <main className="flex-1 px-6 py-8 sm:px-10 lg:px-14">
         <div className="mx-auto max-w-6xl">
           <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#ff6b35]">Overview</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[#17202a]">Good to see you</h1>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[#17202a]">Good to see you, {userName}</h1>
           <p className="mt-2 text-sm text-[#69727d]">Your band workspace is ready to take shape.</p>
         </div>
       </main>

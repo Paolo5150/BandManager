@@ -1,5 +1,7 @@
 "use server";
 
+import { cookies } from "next/headers";
+
 type SignupInput = {
   name: string;
   phone: string;
@@ -53,11 +55,20 @@ export async function signup({
   }
 
   const body = (await response.json().catch(() => null)) as
-    | { user?: { id?: string } }
+    | { user?: { id?: string }; access_token?: string }
     | null;
 
   if (!body?.user?.id) {
     return { error: "Account was created, but no user ID was returned." };
+  }
+
+  if (body.access_token) {
+    (await cookies()).set("band-manager-access-token", body.access_token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+    });
   }
 
   return { userId: body.user.id };
