@@ -4,6 +4,7 @@ import { getAccessToken } from "@/lib/backend/session";
 import { revalidatePath } from "next/cache";
 
 export type Song = { id: string; title: string; artist?: string | null; duration_seconds?: number | null; notes?: string | null; created_at: string };
+export type DeezerSong = { id: number; title: string; artist: { name: string }; duration: number };
 
 async function getContext() {
   const token = await getAccessToken(); const url = process.env.SUPABASE_URL; const secret = process.env.SUPABASE_SECRET_KEY; const publishable = process.env.SUPABASE_PUBLISHABLE_KEY;
@@ -21,6 +22,21 @@ export async function getSongs(): Promise<Song[]> {
   const context = await getContext(); if (!context) return [];
   const response = await fetch(`${context.url}/rest/v1/songs?select=id,title,artist,duration_seconds,notes,created_at&band_id=eq.${encodeURIComponent(context.bandId)}&order=title.asc`, { headers: context.headers, cache: "no-store" });
   return response.ok ? ((await response.json().catch(() => [])) as Song[]) : [];
+}
+
+export async function searchDeezerSongs(query: string): Promise<{ songs?: DeezerSong[]; error?: string }> {
+  const context = await getContext();
+  if (!context?.isAdmin) return { error: "Only admins can search for songs." };
+  const trimmed = query.trim();
+  if (!trimmed) return { error: "Enter part of a song title or artist." };
+  try {
+    const response = await fetch(`https://api.deezer.com/search?q=${encodeURIComponent(trimmed)}&limit=8`, { cache: "no-store" });
+    const body = (await response.json().catch(() => null)) as { data?: DeezerSong[] } | null;
+    if (!response.ok || !body?.data) return { error: "Unable to search Deezer." };
+    return { songs: body.data };
+  } catch {
+    return { error: "Unable to reach Deezer." };
+  }
 }
 
 export async function createSong(formData: FormData): Promise<{ error?: string }> {
