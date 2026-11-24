@@ -19,7 +19,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex min-h-screen bg-[#f8f5f1]">
-      <aside className="flex w-64 shrink-0 flex-col border-r border-[#e8e1d9] bg-white px-5 py-6">
+      <aside className="hidden w-64 shrink-0 flex-col border-r border-[#e8e1e9] bg-white px-5 py-6 md:flex">
         <div className="flex items-center gap-3 px-2">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#ff6b35] text-lg font-bold text-white shadow-md shadow-orange-100">
             B
@@ -60,7 +60,10 @@ export default async function DashboardPage() {
         </div>
       </aside>
 
-      <main className="flex-1 px-6 py-8 sm:px-10 lg:px-14">
+      <main className="flex-1 px-4 py-5 sm:px-10 sm:py-8 lg:px-14">
+        <nav className="mb-6 flex gap-2 overflow-x-auto pb-1 md:hidden" aria-label="Mobile dashboard navigation">
+          {navigation.map((item) => <Link key={item.href} href={item.href} className="shrink-0 rounded-lg bg-white px-3 py-2 text-sm text-[#69727d]">{item.label}</Link>)}
+        </nav>
         <div className="mx-auto max-w-6xl">
           <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#ff6b35]">Overview</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[#17202a]">Good to see you, {userName}</h1>
