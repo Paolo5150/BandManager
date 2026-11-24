@@ -49,11 +49,11 @@ export async function declineMember(formData: FormData): Promise<void> {
     | null;
   if (!own?.[0]?.band_id || own[0].confirmed === false) return;
 
-  await fetch(
+  const deleteResponse = await fetch(
     `${url}/rest/v1/memberships?id=eq.${encodeURIComponent(id)}&band_id=eq.${encodeURIComponent(own[0].band_id)}&confirmed=eq.false`,
-    { method: "DELETE", headers, cache: "no-store" },
+    { method: "DELETE", headers: { ...headers, Prefer: "return=minimal" }, cache: "no-store" },
   );
-  revalidatePath("/dashboard/members");
+  if (deleteResponse.ok) revalidatePath("/dashboard/members");
 }
 
 export async function removeMember(formData: FormData): Promise<void> {
