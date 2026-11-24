@@ -6,6 +6,26 @@ import { revalidatePath } from "next/cache";
 export type BandMember = { id: string; userId: string; name: string; phone: string; role: string };
 export type PendingMember = BandMember;
 
+export async function updateMemberRole(formData: FormData): Promise<void> {
+  const token = (await cookies()).get("band-manager-access-token")?.value;
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_PUBLISHABLE_KEY;
+  const secret = process.env.SUPABASE_SECRET_KEY;
+  const membershipId = String(formData.get("membershipId") ?? "");
+  const role = String(formData.get("role") ?? "");
+  if (!token || !url || !key || !secret || !membershipId || !["admin", "member"].includes(role)) return;
+  const userResponse = await fetch(`${url}/auth/v1/user`, { headers: { apikey: key, Authorization: `Bearer ${token}` }, cache: "no-store" });
+  const user = (await userResponse.json().catch(() => null)) as { id?: string } | null;
+  if (!user?.id) return;
+  const headers = { apikey: secret, Authorization: `Bearer ${secret}` };
+  const ownResponse = await fetch(`${url}/rest/v1/memberships?select=band_id,role&user_id=eq.${encodeURIComponent(user.id)}&confirmed=eq.true&limit=1`, { headers, cache: "no-store" });
+  const own = (await ownResponse.json().catch(() => null)) as { band_id?: string; role?: string }[] | null;
+  if (!own?.[0]?.band_id || own[0].role !== "admin") return;
+  if (role === "member" && membershipId === own[0].band_id) return;
+  await fetch(`${url}/rest/v1/memberships?id=eq.${encodeURIComponent(membershipId)}&band_id=eq.${encodeURIComponent(own[0].band_id)}&confirmed=eq.true`, { method: "PATCH", headers: { ...headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ role }), cache: "no-store" });
+  revalidatePath("/dashboard/members");
+}
+
 export async function confirmMember(formData: FormData): Promise<void> {
   const token = (await cookies()).get("band-manager-access-token")?.value;
   const url = process.env.SUPABASE_URL;
