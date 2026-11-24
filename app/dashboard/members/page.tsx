@@ -1,6 +1,7 @@
-﻿import Link from "next/link";
 import { connection } from "next/server";
 import { getBandMembers } from "@/lib/backend/members";
+import DashboardShell from "../dashboard-shell";
+import PageHeader from "../page-header";
 import InviteModal from "./invite-modal";
 import RemoveMemberButton from "./remove-member-button";
 import ConfirmMemberButton from "./confirm-member-button";
@@ -8,10 +9,43 @@ import RoleSelect from "./role-select";
 
 export const instant = false;
 
-const navigation = ["Overview", "Members", "Songlist", "Sets", "Schedule", "Finance"];
-
 export default async function MembersPage() {
   await connection();
   const { members, bandId, isAdmin, pendingMembers } = await getBandMembers();
-  return <div className="flex min-h-screen bg-[#f8f5f1]"><aside className="hidden w-64 shrink-0 flex-col border-r border-[#e8e1d9] bg-white px-5 py-6"><div className="flex items-center gap-3 px-2"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#ff6b35] text-lg font-bold text-white">B</div><span className="font-semibold tracking-tight text-[#17202a]">BandManager</span></div><nav className="mt-10 flex flex-1 flex-col gap-1" aria-label="Dashboard navigation"><p className="mb-3 px-3 text-xs font-semibold uppercase tracking-[0.16em] text-[#a0a5aa]">Workspace</p>{navigation.map((label) => <Link key={label} href={label === "Overview" ? "/dashboard" : `/dashboard/${label.toLowerCase()}`} className={`rounded-xl px-3 py-3 text-sm font-medium ${label === "Members" ? "bg-[#fff1e9] text-[#e95a27]" : "text-[#69727d] hover:bg-[#f8f5f1]"}`}>{label}</Link>)}</nav></aside><main className="min-w-0 flex-1 px-4 py-5 sm:px-10 sm:py-8 lg:px-14"><div className="mx-auto max-w-5xl"><nav className="mb-6 flex min-w-0 gap-2 overflow-x-auto pb-1 md:hidden" aria-label="Mobile dashboard navigation">{navigation.map((label) => <Link key={label} href={label === "Overview" ? "/dashboard" : `/dashboard/${label.toLowerCase()}`} className={`shrink-0 rounded-lg px-3 py-2 text-sm ${label === "Members" ? "bg-[#fff1e9] font-semibold text-[#e95a27]" : "bg-white text-[#69727d]"}`}>{label}</Link>)}</nav><div className="flex items-end justify-between gap-4"><div><p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#ff6b35]">Band</p><h1 className="mt-2 text-3xl font-semibold tracking-tight text-[#17202a]">Members</h1><p className="mt-2 text-sm text-[#69727d]">Everyone in your band.</p></div><InviteModal bandId={bandId} /></div>{isAdmin && pendingMembers.length > 0 && <div className="mt-8 rounded-2xl border border-[#f0d4c5] bg-[#fff8f3] p-5"><h2 className="font-semibold text-[#17202a]">Pending confirmations</h2>{pendingMembers.map((member) => <div key={member.id} className="mt-4 flex items-center justify-between border-t border-[#f0d4c5] pt-4 text-sm"><div><p className="font-medium text-[#303942]">{member.name}</p><p className="text-[#69727d]">{member.phone}</p></div><ConfirmMemberButton membershipId={member.id} /></div>)}</div>}<div className="mt-8 overflow-hidden rounded-2xl border border-[#e8e1d9] bg-white"><div className="grid grid-cols-[1.4fr_1fr_0.7fr_auto] border-b border-[#eee9e3] px-5 py-3 text-xs font-semibold uppercase tracking-wider text-[#a0a5aa]"><span>Name</span><span>Phone</span><span>Role</span>{isAdmin && <span />}</div>{members.length ? members.map((member) => <div key={member.id} className="grid grid-cols-[1.4fr_1fr_0.7fr_auto] items-center border-b border-[#f1ede8] px-5 py-4 text-sm last:border-0"><span className="font-medium text-[#303942]">{member.name}</span><span className="text-[#69727d]">{member.phone}</span>{isAdmin ? <RoleSelect membershipId={member.id} role={member.role} /> : <span className="capitalize text-[#69727d]">{member.role}</span>}{isAdmin && <RemoveMemberButton membershipId={member.id} name={member.name} />}</div>) : <p className="px-5 py-8 text-sm text-[#69727d]">No members found.</p>}</div></div></main></div>;
+  return (
+    <DashboardShell active="Members">
+      <PageHeader eyebrow="Band" title="Members" description="Everyone in your band." action={<InviteModal bandId={bandId} />} />
+
+      {isAdmin && pendingMembers.length > 0 && (
+        <section className="mt-6 rounded-2xl border border-[#f0d4c5] bg-[#fff8f3] p-4 sm:mt-8 sm:p-5">
+          <h2 className="font-semibold text-[#17202a]">Pending confirmations</h2>
+          {pendingMembers.map((member) => (
+            <div key={member.id} className="mt-3 flex flex-col gap-3 border-t border-[#f0d4c5] pt-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="truncate font-medium text-[#303942]">{member.name}</p>
+                <p className="text-[#69727d]">{member.phone}</p>
+              </div>
+              <ConfirmMemberButton membershipId={member.id} />
+            </div>
+          ))}
+        </section>
+      )}
+
+      <section className="mt-6 overflow-hidden rounded-2xl border border-[#e8e1d9] bg-white sm:mt-8">
+        <div className="hidden grid-cols-[1.4fr_1fr_0.8fr_2.5rem] gap-4 border-b border-[#eee9e3] px-5 py-3 text-xs font-semibold uppercase tracking-wider text-[#a0a5aa] sm:grid">
+          <span>Name</span><span>Phone</span><span>Role</span><span />
+        </div>
+        {members.length ? members.map((member) => (
+          <div key={member.id} className="flex items-center gap-3 border-b border-[#f1ede8] px-4 py-3.5 text-sm last:border-0 sm:grid sm:grid-cols-[1.4fr_1fr_0.8fr_2.5rem] sm:gap-4 sm:px-5 sm:py-4">
+            <div className="min-w-0 flex-1 sm:contents">
+              <p className="truncate font-medium text-[#303942]">{member.name}</p>
+              <p className="truncate text-[#69727d]">{member.phone}</p>
+            </div>
+            <div className="shrink-0">{isAdmin ? <RoleSelect membershipId={member.id} role={member.role} /> : <span className="capitalize text-[#69727d]">{member.role}</span>}</div>
+            <div className="flex w-9 shrink-0 justify-end sm:w-auto">{isAdmin && <RemoveMemberButton membershipId={member.id} name={member.name} />}</div>
+          </div>
+        )) : <p className="px-5 py-8 text-sm text-[#69727d]">No members found.</p>}
+      </section>
+    </DashboardShell>
+  );
 }

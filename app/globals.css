@@ -24,3 +24,17 @@ body {
 *::after {
   box-sizing: border-box;
 }
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+/* iOS Safari zooms the page when focusing inputs smaller than 16px, which
+   causes sideways scrolling on phones. Unlayered, so it wins over utilities. */
+@media (max-width: 639px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}

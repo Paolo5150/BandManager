@@ -19,5 +19,14 @@ function BalanceRow({ balance }: { balance: MemberBalance }) {
     : open === "funds"
       ? <AddFunds membershipId={balance.membershipId} open onOpen={() => setOpen("funds")} onClose={() => setOpen(null)} />
       : <><BalanceAdjustment membershipId={balance.membershipId} open={false} onOpen={() => setOpen("adjustment")} onClose={() => setOpen(null)} /><AddFunds membershipId={balance.membershipId} open={false} onOpen={() => setOpen("funds")} onClose={() => setOpen(null)} /></>;
-  return <div className="rounded-2xl border border-[#e8e1e9] bg-white px-5 py-4"><div className="flex items-center justify-between"><span className="font-medium text-[#303942]">{balance.name}</span><BalanceAmount cents={balance.balanceCents} /></div><div className="flex flex-wrap gap-4">{actions}</div><MemberTransactions membershipId={balance.membershipId} /></div>;
+  return (
+    <div className="rounded-2xl border border-[#e8e1e9] bg-white p-4 sm:px-5">
+      <div className="flex items-center justify-between gap-3">
+        <span className="min-w-0 truncate font-medium text-[#303942]">{balance.name}</span>
+        <BalanceAmount cents={balance.balanceCents} />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">{actions}</div>
+      <MemberTransactions membershipId={balance.membershipId} />
+    </div>
+  );
 }

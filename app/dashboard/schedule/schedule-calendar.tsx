@@ -6,8 +6,8 @@ import { createScheduleEvent, getEventCharges, deleteScheduleEvent, saveEventMem
 import WaitingConfirmationModal from "./waiting-confirmation-modal";
 import { logout } from "@/lib/backend/dashboard-data";
 
-const navigation = ["Overview", "Members", "Songlist", "Sets", "Schedule", "Finance"];
 const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const navigation = ["Overview", "Members", "Songlist", "Sets", "Schedule", "Finance"];
 const currencyFormatter = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
 export default function ScheduleCalendar({ events, members, isAdmin, waitingConfirmations }: { events: ScheduleEvent[]; members: ScheduleMember[]; isAdmin: boolean; waitingConfirmations: ScheduleEvent[] }) {
@@ -89,8 +89,8 @@ export default function ScheduleCalendar({ events, members, isAdmin, waitingConf
     const end = new Date(selectedEvent.ends_at);
     const date = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}`;
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-5">
-        <form onSubmit={(event) => { event.preventDefault(); void saveEdit(new FormData(event.currentTarget)); }} className="max-h-[90vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-3xl bg-white p-7">
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-0 sm:items-center sm:p-5">
+        <form onSubmit={(event) => { event.preventDefault(); void saveEdit(new FormData(event.currentTarget)); }} className="max-h-[92vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-t-3xl bg-white p-5 sm:rounded-3xl sm:p-7">
           <input type="hidden" name="eventId" value={selectedEvent.id} />
           {selectedEvent.series_id && <input type="hidden" name="seriesId" value={selectedEvent.series_id} />}
           <div className="flex items-center justify-between">
@@ -197,8 +197,8 @@ export default function ScheduleCalendar({ events, members, isAdmin, waitingConf
       </div></main>
       {reviewEvent && <WaitingConfirmationModal event={reviewEvent} onClose={() => setReviewEvent(null)} />}
       {selectedEvent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-5">
-          <div className="w-full max-w-md rounded-3xl bg-white p-7 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-0 sm:items-center sm:p-5">
+          <div className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase text-[#ff6b35]">{selectedEvent.type}</p>

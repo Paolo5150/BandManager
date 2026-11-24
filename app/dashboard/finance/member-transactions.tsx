@@ -1,9 +1,48 @@
 "use client";
+
 import { useState } from "react";
 import { getTransactionsForMembership, type LedgerTransaction } from "@/lib/backend/finance";
+import { ChevronDownIcon } from "../icons";
 
 export default function MemberTransactions({ membershipId }: { membershipId: string }) {
-  const [open, setOpen] = useState(false); const [loaded, setLoaded] = useState(false); const [loading, setLoading] = useState(false); const [rows, setRows] = useState<LedgerTransaction[]>([]);
-  async function toggle() { const next = !open; setOpen(next); if (next && !loaded) { setLoading(true); const transactions = await getTransactionsForMembership(membershipId); console.log("[finance] transaction names rendered", transactions.map((row) => ({ kind: row.kind, eventName: row.eventName, amountCents: row.amountCents }))); setRows(transactions); setLoaded(true); setLoading(false); } }
-  return <div className="mt-3"><button type="button" onClick={toggle} className="text-sm font-semibold text-[#69727d]">{open ? "Hide transactions" : "Show transactions"}</button>{open && <div className="mt-3 space-y-2 border-t pt-3">{loading ? <div className="flex items-center gap-2 text-sm text-[#69727d]"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#ddd8d1] border-t-[#ff6b35]" aria-hidden="true" />Loading transactions...</div> : rows.length ? rows.map((row) => <div key={row.id} className="flex flex-wrap justify-between gap-2 text-sm"><span className="text-[#69727d]"><span className="capitalize">{row.kind}</span>{row.eventName ? ` - ${row.eventName}` : ""}{row.note ? ` - ${row.note}` : ""}<span className="ml-2 text-xs text-[#a0a5aa]">{new Date(row.createdAt).toLocaleDateString()}</span></span><span className={row.amountCents < 0 ? "text-[#a04420]" : "text-[#24734b]"}>{(row.amountCents / 100).toFixed(2)}</span></div>) : <p className="text-sm text-[#69727d]">No transactions yet.</p>}</div>}</div>;
+  const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [rows, setRows] = useState<LedgerTransaction[]>([]);
+
+  async function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next && !loaded) {
+      setLoading(true);
+      setRows(await getTransactionsForMembership(membershipId));
+      setLoaded(true);
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 border-t border-[#f1ede8] pt-2">
+      <button type="button" onClick={toggle} aria-expanded={open} className="-mx-1 inline-flex items-center gap-1 rounded-lg px-1 py-1.5 text-sm font-semibold text-[#69727d] hover:text-[#17202a]">
+        {open ? "Hide transactions" : "Show transactions"}
+        <ChevronDownIcon className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="mt-1 divide-y divide-[#f1ede8]">
+          {loading ? (
+            <div className="flex items-center gap-2 py-2 text-sm text-[#69727d]"><span className="h-4 w-4 animate-spin rounded-full border-2 border-[#ddd8d1] border-t-[#ff6b35]" aria-hidden="true" />Loading transactions...</div>
+          ) : rows.length ? rows.map((row) => (
+            <div key={row.id} className="flex items-start justify-between gap-3 py-2 text-sm">
+              <div className="min-w-0">
+                <p className="break-words text-[#303942]"><span className="capitalize">{row.kind}</span>{row.eventName ? ` · ${row.eventName}` : ""}</p>
+                {row.note && <p className="break-words text-xs text-[#69727d]">{row.note}</p>}
+                <p className="text-xs text-[#a0a5aa]">{new Date(row.createdAt).toLocaleDateString()}</p>
+              </div>
+              <span className={`shrink-0 font-semibold tabular-nums ${row.amountCents < 0 ? "text-[#a04420]" : "text-[#24734b]"}`}>{(row.amountCents / 100).toFixed(2)}</span>
+            </div>
+          )) : <p className="py-2 text-sm text-[#69727d]">No transactions yet.</p>}
+        </div>
+      )}
+    </div>
+  );
 }
