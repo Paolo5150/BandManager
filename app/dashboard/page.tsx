@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { connection } from "next/server";
 import { getDashboardData, logout } from "@/lib/backend/dashboard-data";
 import { getUpcomingOverviewEvents, type ScheduleEvent } from "@/lib/backend/schedule";
@@ -64,7 +64,7 @@ export default async function DashboardPage() {
         </div>
       </aside>
 
-      <main className="flex-1 px-4 py-5 sm:px-10 sm:py-8 lg:px-14">
+      <main className="min-w-0 flex-1 px-4 py-5 sm:px-10 sm:py-8 lg:px-14">
         <nav className="mb-6 flex gap-2 overflow-x-auto pb-1 md:hidden" aria-label="Mobile dashboard navigation">
           {navigation.map((item) => <Link key={item.href} href={item.href} className="shrink-0 rounded-lg bg-white px-3 py-2 text-sm text-[#69727d]">{item.label}</Link>)}
         </nav>
