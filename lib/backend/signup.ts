@@ -1,0 +1,54 @@
+"use server";
+
+type SignupInput = {
+  name: string;
+  phone: string;
+  password: string;
+};
+
+type SignupResult = {
+  error?: string;
+};
+
+export async function signup({
+  name,
+  phone,
+  password,
+}: SignupInput): Promise<SignupResult> {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const publishableKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+
+  if (!supabaseUrl || !publishableKey) {
+    return { error: "Supabase is not configured on the server." };
+  }
+
+  const response = await fetch(`${supabaseUrl}/auth/v1/signup`, {
+    method: "POST",
+    headers: {
+      apikey: publishableKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      phone,
+      password,
+      data: { name },
+    }),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as
+      | { msg?: string; message?: string; error_description?: string }
+      | null;
+
+    return {
+      error:
+        body?.msg ??
+        body?.message ??
+        body?.error_description ??
+        "Unable to create your account.",
+    };
+  }
+
+  return {};
+}
