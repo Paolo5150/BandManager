@@ -15,6 +15,8 @@ export default function AuthForm() {
   const [isError, setIsError] = useState(false);
   const [userId, setUserId] = useState<string>();
   const [bandName, setBandName] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const router = useRouter();
   const isSignup = mode === "signup";
 
@@ -43,6 +45,8 @@ export default function AuthForm() {
         setMessage(result.error);
       } else if (result.userId && (isSignup || !result.hasBand)) {
         setUserId(result.userId);
+        setDisplayName(isSignup ? String(formData.get("name") ?? "").trim() : "");
+        setPhoneNumber(String(formData.get("phone") ?? "").trim());
         setMessage("");
       } else {
         router.push("/dashboard");
@@ -60,7 +64,7 @@ export default function AuthForm() {
     if (!userId) return;
     setIsSubmitting(true);
     setIsError(false);
-    const result = await createBand(bandName.trim(), userId);
+    const result = await createBand(bandName.trim(), userId, displayName, phoneNumber);
     if (result.error) {
       setMessage(result.error);
       setIsError(true);

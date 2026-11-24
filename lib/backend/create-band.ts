@@ -5,6 +5,8 @@ type CreateBandResult = { error?: string; bandId?: string };
 export async function createBand(
   name: string,
   userId: string,
+  displayName: string,
+  phone: string,
 ): Promise<CreateBandResult> {
   const supabaseUrl = process.env.SUPABASE_URL;
   const secretKey = process.env.SUPABASE_SECRET_KEY;
@@ -43,7 +45,7 @@ export async function createBand(
   const membershipResponse = await fetch(`${supabaseUrl}/rest/v1/memberships`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ user_id: userId, band_id: band.id, role: "admin" }),
+    body: JSON.stringify({ user_id: userId, band_id: band.id, role: "admin", display_name: displayName, phone }),
     cache: "no-store",
   });
 
