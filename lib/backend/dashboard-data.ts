@@ -34,7 +34,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     | null;
 
   const membershipResponse = await fetch(
-    `${supabaseUrl}/rest/v1/memberships?select=bands(name)&user_id=eq.${encodeURIComponent(authUser?.id ?? "")}&limit=1`,
+    `${supabaseUrl}/rest/v1/memberships?select=confirmed,bands(name)&user_id=eq.${encodeURIComponent(authUser?.id ?? "")}&limit=1`,
     {
       headers: {
         apikey: secretKey,
@@ -43,9 +43,17 @@ export async function getDashboardData(): Promise<DashboardData> {
       cache: "no-store",
     },
   );
+  if (!membershipResponse.ok) {
+    redirect("/pending-confirmation");
+  }
+
   const memberships = (await membershipResponse.json().catch(() => null)) as
-    | { bands?: { name?: string } | null }[]
+    | { bands?: { name?: string } | null; confirmed?: boolean }[]
     | null;
+
+  if (!memberships?.[0] || memberships[0].confirmed !== true) {
+    redirect("/pending-confirmation");
+  }
 
   return {
     userName: authUser?.user_metadata?.name || "Band member",

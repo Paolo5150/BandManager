@@ -59,7 +59,7 @@ export default function AuthForm({ inviteBandId: initialInviteBandId }: { invite
           setIsError(true);
           setMessage(membershipResult.error);
         } else {
-          router.push("/dashboard");
+          router.push(isSignup && inviteBandId ? "/pending-confirmation" : "/dashboard");
         }
       } else if (result.userId && (isSignup || !result.hasBand)) {
         setUserId(result.userId);
@@ -67,7 +67,7 @@ export default function AuthForm({ inviteBandId: initialInviteBandId }: { invite
         setPhoneNumber(String(formData.get("phone") ?? "").trim());
         setMessage("");
       } else {
-        router.push("/dashboard");
+        router.push(result.confirmed === false ? "/pending-confirmation" : "/dashboard");
       }
     } catch {
       setIsError(true);

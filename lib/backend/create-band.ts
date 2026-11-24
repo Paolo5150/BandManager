@@ -56,6 +56,7 @@ export async function createBand(
       role: membershipRole,
       display_name: displayName,
       phone,
+      confirmed: !existingBandId,
     }),
     cache: "no-store",
   });

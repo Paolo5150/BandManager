@@ -13,6 +13,7 @@ type SignupResult = {
   userId?: string;
   hasBand?: boolean;
   displayName?: string;
+  confirmed?: boolean;
 };
 
 export async function signup({
@@ -91,5 +92,5 @@ export async function signup({
     });
   }
 
-  return { userId, displayName: name };
+  return { userId, displayName: name, confirmed: true };
 }

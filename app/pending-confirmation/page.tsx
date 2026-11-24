@@ -1,0 +1,5 @@
+import Link from "next/link";
+
+export default function PendingConfirmationPage() {
+  return <main className="flex min-h-screen items-center justify-center bg-[#f8f5f1] px-5"><section className="w-full max-w-md rounded-3xl border border-[#e8e1d9] bg-white p-8 text-center shadow-xl"><div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[#ff6b35] text-xl font-bold text-white">B</div><h1 className="mt-6 text-3xl font-semibold text-[#17202a]">Waiting for confirmation</h1><p className="mt-3 text-sm leading-6 text-[#69727d]">Your invitation was received. An existing member of the band must confirm your membership before you can access the dashboard.</p><Link href="/" className="mt-7 inline-block rounded-xl bg-[#ff6b35] px-5 py-3 text-sm font-semibold text-white">Back to sign in</Link></section></main>;
+}

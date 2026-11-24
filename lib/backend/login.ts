@@ -7,6 +7,7 @@ type LoginResult = {
   userId?: string;
   hasBand?: boolean;
   displayName?: string;
+  confirmed?: boolean;
 };
 
 export async function login(
@@ -54,7 +55,7 @@ export async function login(
   }
 
   const membershipResponse = await fetch(
-    `${supabaseUrl}/rest/v1/memberships?select=id&user_id=eq.${encodeURIComponent(authBody.user.id)}&limit=1`,
+    `${supabaseUrl}/rest/v1/memberships?select=id,confirmed&user_id=eq.${encodeURIComponent(authBody.user.id)}&limit=1`,
     {
       headers: {
         apikey: secretKey,
@@ -69,12 +70,13 @@ export async function login(
   }
 
   const memberships = (await membershipResponse.json().catch(() => null)) as
-    | { id: string }[]
+    | { id: string; confirmed?: boolean }[]
     | null;
 
   return {
     userId: authBody.user.id,
     hasBand: Boolean(memberships?.length),
     displayName: authBody.user.user_metadata?.name ?? "",
+    confirmed: memberships?.[0]?.confirmed ?? false,
   };
 }
