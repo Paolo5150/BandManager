@@ -7,6 +7,7 @@ import { revalidatePath } from "next/cache";
 export type ScheduleMember = { id: string; name: string };
 export type ScheduleEvent = { id: string; series_id?: string | null; type: string; title: string; starts_at: string; ends_at: string; location?: string | null; notes?: string | null; cost_cents?: number | null; status?: string };
 export type EventCharge = { id: string; membership_id?: string | null; member_name?: string | null; amount_cents: number };
+export type ScheduleUnavailability = { id: string; start_date: string; end_date: string; member_name: string };
 
 function sydneyDateTime(date: string, time: string): Date {
   const [year, month, day] = date.split("-").map(Number);
@@ -108,6 +109,17 @@ export async function getScheduleEvents(): Promise<ScheduleEvent[]> {
   if (!context) return [];
   const response = await fetch(`${context.url}/rest/v1/events?select=id,series_id,type,title,starts_at,ends_at,location,notes,cost_cents,status&band_id=eq.${encodeURIComponent(context.bandId)}&order=starts_at.asc`, { headers: context.headers, cache: "no-store" });
   return response.ok ? ((await response.json().catch(() => [])) as ScheduleEvent[]) : [];
+}
+
+export async function getScheduleUnavailability(): Promise<ScheduleUnavailability[]> {
+  const context = await getContext();
+  if (!context) return [];
+  const membershipsResponse = await fetch(`${context.url}/rest/v1/memberships?select=id,display_name&band_id=eq.${encodeURIComponent(context.bandId)}&confirmed=eq.true`, { headers: context.headers, cache: "no-store" });
+  const memberships = (await membershipsResponse.json().catch(() => [])) as { id: string; display_name?: string | null }[];
+  const names = new Map(memberships.map((membership) => [membership.id, membership.display_name || "Band member"]));
+  const response = await fetch(`${context.url}/rest/v1/unavailability?select=id,membership_id,start_date,end_date&membership_id=in.(${memberships.map((membership) => encodeURIComponent(membership.id)).join(",")})&order=start_date.asc`, { headers: context.headers, cache: "no-store" });
+  const rows = (await response.json().catch(() => [])) as { id: string; membership_id: string; start_date: string; end_date: string }[];
+  return response.ok ? rows.map((row) => ({ ...row, member_name: names.get(row.membership_id) || "Band member" })) : [];
 }
 
 export async function getUpcomingOverviewEvents(): Promise<{ next: ScheduleEvent | null; nextGig: ScheduleEvent | null }> {

@@ -8,6 +8,7 @@ const navigation = [
   { label: "Songlist", href: "/dashboard/songlist" },
   { label: "Sets", href: "/dashboard/sets" },
   { label: "Schedule", href: "/dashboard/schedule" },
+  { label: "Unavailable", href: "/dashboard/unavailability" },
   { label: "Finance", href: "/dashboard/finance" },
 ];
 

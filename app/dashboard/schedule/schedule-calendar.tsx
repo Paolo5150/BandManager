@@ -10,6 +10,7 @@ import {
   updateScheduleEvent,
   type ScheduleEvent,
   type ScheduleMember,
+  type ScheduleUnavailability,
 } from "@/lib/backend/schedule";
 import WaitingConfirmationModal from "./waiting-confirmation-modal";
 import { logout } from "@/lib/backend/dashboard-data";
@@ -22,6 +23,7 @@ const navigation = [
   "Songlist",
   "Sets",
   "Schedule",
+  "Unavailable",
   "Finance",
 ];
 const currencyFormatter = new Intl.NumberFormat("en-US", {
@@ -116,11 +118,13 @@ export default function ScheduleCalendar({
   members,
   isAdmin,
   waitingConfirmations,
+  unavailability,
 }: {
   events: ScheduleEvent[];
   members: ScheduleMember[];
   isAdmin: boolean;
   waitingConfirmations: ScheduleEvent[];
+  unavailability: ScheduleUnavailability[];
 }) {
   const currentDate = new Date();
   const firstEventDate = events.length
@@ -133,6 +137,7 @@ export default function ScheduleCalendar({
   const [month, setMonth] = useState(
     new Date(firstEventDate.getFullYear(), firstEventDate.getMonth(), 1),
   );
+  const [calendarView, setCalendarView] = useState<"month" | "week">("month");
   const [isOpen, setIsOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(
@@ -151,9 +156,9 @@ export default function ScheduleCalendar({
   const [repeatWeeks, setRepeatWeeks] = useState("0");
   const [repeatIndefinitely, setRepeatIndefinitely] = useState(true);
 
-  const firstDay = new Date(month.getFullYear(), month.getMonth(), 1);
+  const firstDay = new Date(month.getFullYear(), month.getMonth(), calendarView === "week" ? currentDate.getDate() : 1);
   firstDay.setDate(firstDay.getDate() - firstDay.getDay());
-  const days = Array.from({ length: 42 }, (_, index) => {
+  const days = Array.from({ length: calendarView === "week" ? 7 : 42 }, (_, index) => {
     const day = new Date(firstDay);
     day.setDate(firstDay.getDate() + index);
     return day;
@@ -165,6 +170,20 @@ export default function ScheduleCalendar({
       (event) =>
         calendarDateKey(event.starts_at) === dayKey,
     );
+  }
+
+  function unavailableFor(day: Date) {
+    const dayStart = new Date(`${calendarDateKey(day)}T00:00:00+11:00`).getTime();
+    const dayEnd = dayStart + 86400000;
+    return unavailability.filter((entry) => new Date(entry.start_date).getTime() < dayEnd && new Date(entry.end_date).getTime() > dayStart);
+  }
+
+  function weekEventStyle(event: ScheduleEvent) {
+    const start = new Date(event.starts_at);
+    const end = new Date(event.ends_at);
+    const startMinutes = start.getHours() * 60 + start.getMinutes();
+    const duration = Math.max(45, (end.getTime() - start.getTime()) / 60000);
+    return { top: `${(startMinutes / 60) * 4}rem`, height: `${(duration / 60) * 4}rem` };
   }
 
   async function submit(formData: FormData) {
@@ -519,7 +538,7 @@ export default function ScheduleCalendar({
               href={
                 item === "Overview"
                   ? "/dashboard"
-                  : `/dashboard/${item.toLowerCase()}`
+                  : `/dashboard/${item === "Unavailable" ? "unavailability" : item.toLowerCase()}`
               }
               className={`rounded-xl px-3 py-3 text-sm ${item === "Schedule" ? "bg-[#fff1e9] text-[#e95a27]" : "text-[#69727d] hover:bg-[#f8f5f1]"}`}
             >
@@ -546,7 +565,7 @@ export default function ScheduleCalendar({
                 href={
                   item === "Overview"
                     ? "/dashboard"
-                    : `/dashboard/${item.toLowerCase()}`
+                  : `/dashboard/${item === "Unavailable" ? "unavailability" : item.toLowerCase()}`
                 }
                 className="shrink-0 rounded-lg bg-white px-3 py-2 text-sm text-[#69727d]"
               >
@@ -605,8 +624,9 @@ export default function ScheduleCalendar({
           <section className="mt-8 overflow-hidden rounded-2xl border border-[#e8e1e9] bg-white shadow-sm">
             <div className="flex items-center justify-between border-b px-5 py-4">
               <h2 className="text-lg font-semibold text-[#17202a]">
-                {monthFormatter.format(month)}
+                {calendarView === "week" ? `${monthFormatter.format(days[0])} - ${monthFormatter.format(days[6])}` : monthFormatter.format(month)}
               </h2>
+              <div className="flex rounded-lg bg-[#f5f2ee] p-1"><button type="button" onClick={() => setCalendarView("month")} className={`rounded-md px-2 py-1 text-xs font-semibold ${calendarView === "month" ? "bg-white shadow-sm" : "text-[#69727d]"}`}>Month</button><button type="button" onClick={() => setCalendarView("week")} className={`rounded-md px-2 py-1 text-xs font-semibold ${calendarView === "week" ? "bg-white shadow-sm" : "text-[#69727d]"}`}>Week</button></div>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -639,7 +659,7 @@ export default function ScheduleCalendar({
                 </button>
               </div>
             </div>
-            <div className="grid grid-cols-7 border-b">
+            {calendarView === "week" ? <div className="overflow-x-auto"><div className="grid min-w-[48rem] grid-cols-[4rem_repeat(7,minmax(6rem,1fr))] border-b"><div className="border-r" />{days.map((day) => <p key={day.toISOString()} className="border-r px-1 py-3 text-center text-xs font-semibold text-[#a0a5aa]">{day.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit" })}</p>)}<div className="relative border-r">{Array.from({ length: 24 }, (_, hour) => <div key={hour} className="h-16 border-b px-1 pt-1 text-[10px] text-[#a0a5aa]">{String(hour).padStart(2, "0")}:00</div>)}</div>{days.map((day) => <div key={day.toISOString()} className="relative border-r"><div className="absolute inset-0">{Array.from({ length: 24 }, (_, hour) => <div key={hour} className="h-16 border-b" />)}</div>{eventsFor(day).map((event) => <button key={event.id} type="button" onClick={() => setSelectedEvent(event)} style={weekEventStyle(event)} className="absolute left-1 right-1 z-10 overflow-hidden rounded-lg bg-[#fff1e9] px-2 py-1 text-left text-xs font-semibold text-[#a04420] shadow-sm">{event.title}</button>)}</div>)}</div></div> : <div className="grid grid-cols-7 border-b">
               {weekdays.map((day) => (
                 <p
                   key={day}
@@ -648,7 +668,7 @@ export default function ScheduleCalendar({
                   {day}
                 </p>
               ))}
-            </div>
+            </div>}
             <div className="grid grid-cols-7">
               {days.map((day) => (
                 <div
@@ -667,6 +687,7 @@ export default function ScheduleCalendar({
                   >
                     {day.getDate()}
                   </span>
+                  {unavailableFor(day).length > 0 && <button type="button" onClick={(event) => { event.stopPropagation(); setMessage(`Unavailable: ${unavailableFor(day).map((entry) => entry.member_name).join(", ")}`); }} className="mt-1 flex h-7 w-7 items-center justify-center rounded-full bg-[#fce9e4] text-sm font-bold text-[#a04420]" aria-label="Show unavailable members">!</button>}
                   {eventsFor(day).map((event) => (
                     <button
                       key={event.id}
