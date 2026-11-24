@@ -64,13 +64,15 @@ export async function login(
   }
 
   const memberships = (await membershipResponse.json().catch(() => null)) as
-    | { id: string; confirmed?: boolean }[]
+    | { id: string; confirmed?: boolean | string }[]
     | null;
+
+  const confirmed = memberships?.[0]?.confirmed === true || memberships?.[0]?.confirmed === "true";
 
   return {
     userId: authBody.user.id,
     hasBand: Boolean(memberships?.length),
     displayName: authBody.user.user_metadata?.name ?? "",
-    confirmed: memberships?.[0]?.confirmed ?? false,
+    confirmed,
   };
 }

@@ -1,0 +1,13 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { confirmScheduleEvent, getEventCharges, type EventCharge, type ScheduleEvent } from "@/lib/backend/schedule";
+
+export default function WaitingConfirmationModal({ event, onClose }: { event: ScheduleEvent; onClose: () => void }) {
+  const [charges, setCharges] = useState<EventCharge[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  useEffect(() => { getEventCharges(event.id).then(setCharges).finally(() => setLoading(false)); }, [event.id]);
+  async function confirm() { const data = new FormData(); data.set("eventId", event.id); charges.forEach((charge) => data.set(`charge_${charge.id}`, String(charge.amount_cents / 100))); const result = await confirmScheduleEvent(data); if (result.error) setError(result.error); else onClose(); }
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-5"><div className="w-full max-w-lg rounded-3xl bg-white p-7 shadow-2xl"><div className="flex items-center justify-between"><div><p className="text-xs font-semibold uppercase text-[#ff6b35]">Waiting confirmation</p><h2 className="mt-2 text-2xl font-semibold">{event.title}</h2></div><button type="button" onClick={onClose} className="text-2xl">x</button></div><div className="mt-5 space-y-2 text-sm"><p><b>When:</b> {new Date(event.starts_at).toLocaleString()} - {new Date(event.ends_at).toLocaleTimeString()}</p>{event.location && <p><b>Location:</b> {event.location}</p>}<p><b>Total cost:</b> {(Number(event.cost_cents ?? 0) / 100).toFixed(2)}</p>{event.notes && <p className="whitespace-pre-wrap"><b>Notes:</b> {event.notes}</p>}</div><div className="mt-6 border-t pt-4"><h3 className="font-semibold">Member charges</h3>{loading ? <p className="mt-3 text-sm text-[#69727d]">Loading charges...</p> : charges.length ? <div className="mt-3 space-y-3">{charges.map((charge) => <label key={charge.id} className="flex items-center justify-between gap-3 text-sm"><span>{charge.member_name || "Member"}</span><input type="number" min="0" step="0.01" value={charge.amount_cents / 100} onChange={(e) => setCharges((rows) => rows.map((row) => row.id === charge.id ? { ...row, amount_cents: Math.round(Number(e.target.value || 0) * 100) } : row))} className="h-10 w-28 rounded-lg border px-2" /></label>)}</div> : <p className="mt-3 text-sm text-[#69727d]">No individual charges.</p>}</div>{error && <p className="mt-4 text-sm text-[#a04420]">{error}</p>}<button type="button" disabled={loading} onClick={confirm} className="mt-7 h-11 w-full rounded-xl bg-[#ff6b35] font-semibold text-white disabled:opacity-50">Confirm event</button></div></div>;
+}

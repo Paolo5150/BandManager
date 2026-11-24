@@ -5,7 +5,71 @@ import { getAccessToken } from "@/lib/backend/session";
 import { revalidatePath } from "next/cache";
 
 export type ScheduleMember = { id: string; name: string };
-export type ScheduleEvent = { id: string; series_id?: string | null; type: string; title: string; starts_at: string; ends_at: string; location?: string | null; notes?: string | null; cost_cents?: number | null };
+export type ScheduleEvent = { id: string; series_id?: string | null; type: string; title: string; starts_at: string; ends_at: string; location?: string | null; notes?: string | null; cost_cents?: number | null; status?: string };
+export type EventCharge = { id: string; membership_id?: string | null; member_name?: string | null; amount_cents: number };
+
+export async function getEventCharges(eventId: string): Promise<EventCharge[]> {
+  const context = await getContext();
+  if (!context?.isAdmin || !eventId) return [];
+  const response = await fetch(`${context.url}/rest/v1/event_charges?select=id,membership_id,member_name,amount_cents&event_id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}`, { headers: context.headers, cache: "no-store" });
+  if (!response.ok) return [];
+  const charges = (await response.json().catch(() => [])) as EventCharge[];
+  const ids = charges.map((charge) => charge.membership_id).filter((id): id is string => Boolean(id));
+  if (!ids.length) return charges;
+  const membershipResponse = await fetch(`${context.url}/rest/v1/memberships?select=id,display_name&band_id=eq.${encodeURIComponent(context.bandId)}&id=in.(${ids.map(encodeURIComponent).join(",")})`, { headers: context.headers, cache: "no-store" });
+  const memberships = (await membershipResponse.json().catch(() => [])) as { id: string; display_name?: string | null }[];
+  const names = new Map(memberships.map((membership) => [membership.id, membership.display_name || "Member"]));
+  return charges.map((charge) => ({ ...charge, member_name: charge.member_name || (charge.membership_id ? names.get(charge.membership_id) : undefined) || "Member" }));
+}
+
+export async function updateEventCharges(formData: FormData): Promise<{ error?: string }> {
+  const context = await getContext();
+  const eventId = String(formData.get("eventId") ?? "");
+  if (!context?.isAdmin || !eventId) return { error: "Only admins can edit event charges." };
+  const eventStatusResponse = await fetch(`${context.url}/rest/v1/events?select=status&id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}&limit=1`, { headers: context.headers, cache: "no-store" });
+  const eventStatus = (await eventStatusResponse.json().catch(() => [])) as { status?: string }[];
+  if (eventStatus[0]?.status === "completed") return { error: "Confirmed events cannot be modified." };
+  const response = await fetch(`${context.url}/rest/v1/event_charges?select=id,membership_id&event_id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}`, { headers: context.headers, cache: "no-store" });
+  const charges = (await response.json().catch(() => [])) as { id: string; membership_id?: string | null }[];
+  if (!response.ok) return { error: "Unable to load event charges." };
+  for (const charge of charges) {
+    const amount = Math.round((Number(formData.get(`charge_${charge.id}`) ?? 0) || 0) * 100);
+    const update = await fetch(`${context.url}/rest/v1/event_charges?id=eq.${encodeURIComponent(charge.id)}&event_id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}`, { method: "PATCH", headers: { ...context.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ amount_cents: amount }), cache: "no-store" });
+    if (!update.ok) return { error: "Unable to update an event charge." };
+  }
+  revalidatePath("/dashboard/schedule");
+  return {};
+}
+
+export async function saveEventMemberCharges(formData: FormData): Promise<{ error?: string }> {
+  const context = await getContext();
+  const eventId = String(formData.get("eventId") ?? "");
+  const seriesId = String(formData.get("seriesId") ?? "");
+  const scope = String(formData.get("editScope") ?? "instance");
+  if (!context?.isAdmin || !eventId) return { error: "Only admins can edit event charges." };
+  const band = `band_id=eq.${encodeURIComponent(context.bandId)}`;
+  const targetQuery = scope === "series" && seriesId
+    ? `series_id=eq.${encodeURIComponent(seriesId)}`
+    : `id=eq.${encodeURIComponent(eventId)}`;
+  const targetsResponse = await fetch(`${context.url}/rest/v1/events?select=id&${targetQuery}&${band}&status=eq.scheduled`, { headers: context.headers, cache: "no-store" });
+  const targets = (await targetsResponse.json().catch(() => [])) as { id: string }[];
+  if (!targetsResponse.ok) return { error: "Unable to load events for charges." };
+  if (!targets.length) return { error: "Confirmed events cannot be modified." };
+  const eventIds = targets.map((target) => encodeURIComponent(target.id)).join(",");
+  const rows = Array.from(formData.entries())
+    .filter(([key]) => key.startsWith("charge_"))
+    .map(([key, value]) => ({ membership_id: key.slice(7), amount_cents: Math.round(Math.max(0, Number(value) || 0) * 100) }))
+    .filter((row) => row.amount_cents > 0);
+  const removed = await fetch(`${context.url}/rest/v1/event_charges?event_id=in.(${eventIds})&${band}`, { method: "DELETE", headers: context.headers, cache: "no-store" });
+  if (!removed.ok) return { error: "Unable to update event charges." };
+  if (rows.length) {
+    const body = targets.flatMap((target) => rows.map((row) => ({ band_id: context.bandId, event_id: target.id, ...row })));
+    const inserted = await fetch(`${context.url}/rest/v1/event_charges`, { method: "POST", headers: { ...context.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(body), cache: "no-store" });
+    if (!inserted.ok) return { error: "Unable to save event charges." };
+  }
+  revalidatePath("/dashboard/schedule");
+  return {};
+}
 
 async function getContext() {
   const token = await getAccessToken();
@@ -25,7 +89,7 @@ async function getContext() {
 export async function getScheduleEvents(): Promise<ScheduleEvent[]> {
   const context = await getContext();
   if (!context) return [];
-  const response = await fetch(`${context.url}/rest/v1/events?select=id,series_id,type,title,starts_at,ends_at,location,notes,cost_cents&band_id=eq.${encodeURIComponent(context.bandId)}&order=starts_at.asc`, { headers: context.headers, cache: "no-store" });
+  const response = await fetch(`${context.url}/rest/v1/events?select=id,series_id,type,title,starts_at,ends_at,location,notes,cost_cents,status&band_id=eq.${encodeURIComponent(context.bandId)}&order=starts_at.asc`, { headers: context.headers, cache: "no-store" });
   return response.ok ? ((await response.json().catch(() => [])) as ScheduleEvent[]) : [];
 }
 
@@ -36,6 +100,9 @@ export async function updateScheduleEvent(formData: FormData): Promise<{ error?:
   const scope = String(formData.get("editScope") ?? "instance");
   if (!context || !id) return { error: "You must be a confirmed band member." };
   if (!context.isAdmin) return { error: "Only admins can modify events." };
+  const existing = await fetch(`${context.url}/rest/v1/events?select=status&id=eq.${encodeURIComponent(id)}&band_id=eq.${encodeURIComponent(context.bandId)}&limit=1`, { headers: context.headers, cache: "no-store" });
+  const existingRows = (await existing.json().catch(() => [])) as { status?: string }[];
+  if (existingRows[0]?.status === "completed") return { error: "Confirmed events cannot be modified." };
   const date = String(formData.get("date") ?? "");
   const startsAt = String(formData.get("startsAt") ?? "");
   const endsAt = String(formData.get("endsAt") ?? "");
@@ -59,6 +126,9 @@ export async function deleteScheduleEvent(formData: FormData): Promise<{ error?:
   const seriesId = String(formData.get("seriesId") ?? "");
   if (!context || !eventId) return { error: "You must be a confirmed band member." };
   if (!context.isAdmin) return { error: "Only admins can delete events." };
+  const existing = await fetch(`${context.url}/rest/v1/events?select=status&id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}&limit=1`, { headers: context.headers, cache: "no-store" });
+  const existingRows = (await existing.json().catch(() => [])) as { status?: string }[];
+  if (existingRows[0]?.status === "completed") return { error: "Confirmed events cannot be deleted." };
   const query = seriesId ? `series_id=eq.${encodeURIComponent(seriesId)}&band_id=eq.${encodeURIComponent(context.bandId)}` : `id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}`;
   const response = await fetch(`${context.url}/rest/v1/events?${query}`, { method: "DELETE", headers: context.headers, cache: "no-store" });
   if (!response.ok) return { error: "Unable to delete the event." };
@@ -83,6 +153,32 @@ export async function getScheduleMembers(): Promise<ScheduleMember[]> {
 export async function getScheduleAccess(): Promise<boolean> {
   const context = await getContext();
   return context?.isAdmin ?? false;
+}
+
+export async function getWaitingConfirmations(): Promise<ScheduleEvent[]> {
+  const context = await getContext();
+  if (!context?.isAdmin) return [];
+  const response = await fetch(`${context.url}/rest/v1/events?select=id,series_id,type,title,starts_at,ends_at,location,notes,cost_cents&band_id=eq.${encodeURIComponent(context.bandId)}&status=eq.scheduled&ends_at=lt.${encodeURIComponent(new Date().toISOString())}&order=ends_at.desc`, { headers: context.headers, cache: "no-store" });
+  return response.ok ? ((await response.json().catch(() => [])) as ScheduleEvent[]) : [];
+}
+
+export async function confirmScheduleEvent(formData: FormData): Promise<{ error?: string }> {
+  const context = await getContext();
+  const eventId = String(formData.get("eventId") ?? "");
+  if (!context?.isAdmin || !eventId) return { error: "Only admins can confirm events." };
+  const chargesResponse = await fetch(`${context.url}/rest/v1/event_charges?select=id,membership_id,member_name,amount_cents&event_id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}`, { headers: context.headers, cache: "no-store" });
+  const charges = (await chargesResponse.json().catch(() => [])) as EventCharge[];
+  if (!chargesResponse.ok) return { error: "Unable to load event charges." };
+  const submittedCharges = charges.map((charge) => ({ ...charge, amount_cents: Math.round((Number(formData.get(`charge_${charge.id}`) ?? charge.amount_cents / 100) || 0) * 100) }));
+  const updateResponse = await fetch(`${context.url}/rest/v1/events?id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}&status=eq.scheduled`, { method: "PATCH", headers: { ...context.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ status: "completed" }), cache: "no-store" });
+  if (!updateResponse.ok) return { error: "Unable to complete the event." };
+  if (charges.length) {
+    const ledgerResponse = await fetch(`${context.url}/rest/v1/member_ledger`, { method: "POST", headers: { ...context.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(submittedCharges.filter((charge) => charge.membership_id && charge.amount_cents > 0).map((charge) => ({ band_id: context.bandId, membership_id: charge.membership_id, member_name: charge.member_name, kind: "charge", amount_cents: -Math.abs(charge.amount_cents), event_charge_id: charge.id, created_by: context.userId }))), cache: "no-store" });
+    if (!ledgerResponse.ok) return { error: "Event completed, but member ledger entries could not be created." };
+  }
+  revalidatePath("/dashboard/schedule");
+  revalidatePath("/dashboard/finance");
+  return {};
 }
 
 export async function createScheduleEvent(formData: FormData): Promise<{ error?: string }> {

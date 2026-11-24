@@ -49,10 +49,11 @@ export async function getDashboardData(): Promise<DashboardData> {
   }
 
   const memberships = (await membershipResponse.json().catch(() => null)) as
-    | { bands?: { name?: string } | null; confirmed?: boolean }[]
+    | { bands?: { name?: string } | null; confirmed?: boolean | string }[]
     | null;
 
-  if (!memberships?.[0] || memberships[0].confirmed !== true) {
+  const confirmed = memberships?.[0]?.confirmed === true || memberships?.[0]?.confirmed === "true";
+  if (!memberships?.[0] || !confirmed) {
     redirect("/pending-confirmation");
   }
 
