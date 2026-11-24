@@ -59,7 +59,7 @@ export default function AuthForm({ inviteBandId: initialInviteBandId }: { invite
           setIsError(true);
           setMessage(membershipResult.error);
         } else {
-          router.push(isSignup && inviteBandId ? "/pending-confirmation" : "/dashboard");
+          router.push(isSignup || result.confirmed === false ? "/pending-confirmation" : "/dashboard");
         }
       } else if (result.userId && (isSignup || !result.hasBand)) {
         setUserId(result.userId);

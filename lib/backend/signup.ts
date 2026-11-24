@@ -1,6 +1,7 @@
 "use server";
 
 import { cookies } from "next/headers";
+import { saveSession } from "@/lib/backend/session";
 
 type SignupInput = {
   name: string;
@@ -57,7 +58,7 @@ export async function signup({
   }
 
   const body = (await response.json().catch(() => null)) as
-    | { id?: string; user?: { id?: string }; access_token?: string }
+    | { id?: string; user?: { id?: string }; access_token?: string; refresh_token?: string }
     | null;
 
   let userId = body?.user?.id ?? body?.id;
@@ -83,14 +84,7 @@ export async function signup({
     return { error: "Account was created, but its Auth user ID could not be found." };
   }
 
-  if (body?.access_token) {
-    (await cookies()).set("band-manager-access-token", body.access_token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-    });
-  }
+  await saveSession(body?.access_token, body?.refresh_token);
 
   return { userId, displayName: name, confirmed: true };
 }

@@ -1,6 +1,7 @@
 "use server";
 
 import { cookies } from "next/headers";
+import { clearSession, getAccessToken } from "@/lib/backend/session";
 import { redirect } from "next/navigation";
 
 type DashboardData = {
@@ -9,12 +10,12 @@ type DashboardData = {
 };
 
 export async function logout(): Promise<void> {
-  (await cookies()).delete("band-manager-access-token");
+  await clearSession();
   redirect("/");
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const token = (await cookies()).get("band-manager-access-token")?.value;
+  const token = await getAccessToken();
   const supabaseUrl = process.env.SUPABASE_URL;
   const secretKey = process.env.SUPABASE_SECRET_KEY;
 

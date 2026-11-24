@@ -1,12 +1,14 @@
 "use server";
 
 import { cookies } from "next/headers";
+import { getAccessToken } from "@/lib/backend/session";
 import { revalidatePath } from "next/cache";
 
-export type ScheduleEvent = { id: string; type: string; title: string; starts_at: string; ends_at: string; location?: string | null; notes?: string | null };
+export type ScheduleMember = { id: string; name: string };
+export type ScheduleEvent = { id: string; series_id?: string | null; type: string; title: string; starts_at: string; ends_at: string; location?: string | null; notes?: string | null; cost_cents?: number | null };
 
 async function getContext() {
-  const token = (await cookies()).get("band-manager-access-token")?.value;
+  const token = await getAccessToken();
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SECRET_KEY;
   const publishable = process.env.SUPABASE_PUBLISHABLE_KEY;
@@ -23,8 +25,50 @@ async function getContext() {
 export async function getScheduleEvents(): Promise<ScheduleEvent[]> {
   const context = await getContext();
   if (!context) return [];
-  const response = await fetch(`${context.url}/rest/v1/events?select=id,type,title,starts_at,ends_at,location,notes&band_id=eq.${encodeURIComponent(context.bandId)}&order=starts_at.asc`, { headers: context.headers, cache: "no-store" });
+  const response = await fetch(`${context.url}/rest/v1/events?select=id,series_id,type,title,starts_at,ends_at,location,notes,cost_cents&band_id=eq.${encodeURIComponent(context.bandId)}&order=starts_at.asc`, { headers: context.headers, cache: "no-store" });
   return response.ok ? ((await response.json().catch(() => [])) as ScheduleEvent[]) : [];
+}
+
+export async function updateScheduleEvent(formData: FormData): Promise<{ error?: string }> {
+  const context = await getContext();
+  const id = String(formData.get("eventId") ?? "");
+  if (!context || !id) return { error: "You must be a confirmed band member." };
+  const date = String(formData.get("date") ?? "");
+  const startsAt = String(formData.get("startsAt") ?? "");
+  const endsAt = String(formData.get("endsAt") ?? "");
+  const start = new Date(`${date}T${startsAt}`);
+  const end = new Date(`${date}T${endsAt}`);
+  if (!date || !startsAt || !endsAt || end <= start) return { error: "Enter a valid date and time range." };
+  const response = await fetch(`${context.url}/rest/v1/events?id=eq.${encodeURIComponent(id)}&band_id=eq.${encodeURIComponent(context.bandId)}`, { method: "PATCH", headers: { ...context.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ type: String(formData.get("type") ?? "practice"), title: String(formData.get("title") ?? "").trim() || "Event", starts_at: start.toISOString(), ends_at: end.toISOString(), location: String(formData.get("location") ?? "").trim() || null, notes: String(formData.get("notes") ?? "").trim() || null, cost_cents: Math.round(Math.max(0, Number(formData.get("costCents") ?? "0") || 0) * 100) }), cache: "no-store" });
+  if (!response.ok) return { error: "Unable to update the event." };
+  revalidatePath("/dashboard/schedule");
+  return {};
+}
+
+export async function deleteScheduleEvent(formData: FormData): Promise<{ error?: string }> {
+  const context = await getContext();
+  const eventId = String(formData.get("eventId") ?? "");
+  const seriesId = String(formData.get("seriesId") ?? "");
+  if (!context || !eventId) return { error: "You must be a confirmed band member." };
+  const query = seriesId ? `series_id=eq.${encodeURIComponent(seriesId)}&band_id=eq.${encodeURIComponent(context.bandId)}` : `id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}`;
+  const response = await fetch(`${context.url}/rest/v1/events?${query}`, { method: "DELETE", headers: context.headers, cache: "no-store" });
+  if (!response.ok) return { error: "Unable to delete the event." };
+
+  if (seriesId) {
+    const seriesResponse = await fetch(`${context.url}/rest/v1/event_series?id=eq.${encodeURIComponent(seriesId)}&band_id=eq.${encodeURIComponent(context.bandId)}`, { method: "DELETE", headers: context.headers, cache: "no-store" });
+    if (!seriesResponse.ok) return { error: "The event instances were deleted, but the recurring series could not be removed." };
+  }
+
+  revalidatePath("/dashboard/schedule");
+  return {};
+}
+
+export async function getScheduleMembers(): Promise<ScheduleMember[]> {
+  const context = await getContext();
+  if (!context) return [];
+  const response = await fetch(`${context.url}/rest/v1/memberships?select=id,display_name&band_id=eq.${encodeURIComponent(context.bandId)}&confirmed=eq.true&order=display_name.asc`, { headers: context.headers, cache: "no-store" });
+  const rows = (await response.json().catch(() => [])) as { id: string; display_name?: string | null }[];
+  return response.ok ? rows.map((row) => ({ id: row.id, name: row.display_name || "Unnamed member" })) : [];
 }
 
 export async function createScheduleEvent(formData: FormData): Promise<{ error?: string }> {
@@ -42,10 +86,13 @@ export async function createScheduleEvent(formData: FormData): Promise<{ error?:
   const repeatUntil = String(formData.get("repeatUntil") ?? "");
   const location = String(formData.get("location") ?? "").trim() || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
+  const costCents = Math.round(Math.max(0, Number(formData.get("costCents") ?? "0") || 0) * 100);
+  const chargeRows = Array.from(formData.entries()).filter(([key]) => key.startsWith("charge_")).map(([key, value]) => ({ membership_id: key.slice(7), amount_cents: Math.round(Math.max(0, Number(value) || 0) * 100) }));
+  if (chargeRows.reduce((sum, row) => sum + row.amount_cents, 0) !== costCents) return { error: "Member charges must add up exactly to the event cost." };
   const headers = { ...context.headers, "Content-Type": "application/json", Prefer: "return=representation" };
   let seriesId: string | null = null;
   if ([1, 2, 3].includes(repeatWeeks)) {
-    const response = await fetch(`${context.url}/rest/v1/event_series`, { method: "POST", headers, body: JSON.stringify({ band_id: context.bandId, title, start_date: date, start_time: startsAt, duration_minutes: Math.round((end.getTime() - start.getTime()) / 60000), interval_weeks: repeatWeeks, end_date: repeatUntil || null, location, notes, created_by: context.userId }), cache: "no-store" });
+    const response = await fetch(`${context.url}/rest/v1/event_series`, { method: "POST", headers, body: JSON.stringify({ band_id: context.bandId, title, start_date: date, start_time: startsAt, duration_minutes: Math.round((end.getTime() - start.getTime()) / 60000), interval_weeks: repeatWeeks, end_date: repeatUntil || null, location, notes, cost_cents: costCents, created_by: context.userId }), cache: "no-store" });
     const series = (await response.json().catch(() => null)) as { id?: string }[] | null;
     if (!response.ok || !series?.[0]?.id) return { error: "Unable to create the recurring event." };
     seriesId = series[0].id;
@@ -53,11 +100,16 @@ export async function createScheduleEvent(formData: FormData): Promise<{ error?:
   const until = repeatWeeks ? (repeatUntil ? new Date(`${repeatUntil}T23:59:59`) : new Date(start.getTime() + 52 * 7 * 86400000)) : start;
   const events: Record<string, unknown>[] = [];
   for (let current = new Date(start); current <= until; current = new Date(current.getTime() + (repeatWeeks || 52) * 7 * 86400000)) {
-    events.push({ band_id: context.bandId, series_id: seriesId, type, title, starts_at: current.toISOString(), ends_at: new Date(current.getTime() + end.getTime() - start.getTime()).toISOString(), location, notes, created_by: context.userId });
+    events.push({ band_id: context.bandId, series_id: seriesId, type, title, starts_at: current.toISOString(), ends_at: new Date(current.getTime() + end.getTime() - start.getTime()).toISOString(), location, notes, cost_cents: costCents || null, created_by: context.userId });
     if (!repeatWeeks) break;
   }
   const response = await fetch(`${context.url}/rest/v1/events`, { method: "POST", headers, body: JSON.stringify(events), cache: "no-store" });
-  if (!response.ok) return { error: "Unable to save the event." };
+  const createdEvents = (await response.json().catch(() => [])) as { id: string }[];
+  if (!response.ok || !createdEvents.length) return { error: "Unable to save the event." };
+  if (chargeRows.length) {
+    const charges = createdEvents.flatMap((event) => chargeRows.map((charge) => ({ band_id: context.bandId, event_id: event.id, membership_id: charge.membership_id, amount_cents: charge.amount_cents })));
+    await fetch(`${context.url}/rest/v1/event_charges`, { method: "POST", headers, body: JSON.stringify(charges), cache: "no-store" });
+  }
   revalidatePath("/dashboard/schedule");
   return {};
 }

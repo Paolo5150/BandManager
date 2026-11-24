@@ -1,6 +1,7 @@
 "use server";
 
 import { cookies } from "next/headers";
+import { saveSession } from "@/lib/backend/session";
 
 type LoginResult = {
   error?: string;
@@ -33,7 +34,7 @@ export async function login(
   });
 
   const authBody = (await authResponse.json().catch(() => null)) as
-    | { user?: { id?: string; user_metadata?: { name?: string } }; access_token?: string; msg?: string; error_description?: string }
+    | { user?: { id?: string; user_metadata?: { name?: string } }; access_token?: string; refresh_token?: string; msg?: string; error_description?: string }
     | null;
 
   if (!authResponse.ok || !authBody?.user?.id) {
@@ -45,14 +46,7 @@ export async function login(
     };
   }
 
-  if (authBody.access_token) {
-    (await cookies()).set("band-manager-access-token", authBody.access_token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-    });
-  }
+  await saveSession(authBody.access_token, authBody.refresh_token);
 
   const membershipResponse = await fetch(
     `${supabaseUrl}/rest/v1/memberships?select=id,confirmed&user_id=eq.${encodeURIComponent(authBody.user.id)}&limit=1`,
