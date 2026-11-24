@@ -13,6 +13,7 @@ import {
 } from "@/lib/backend/schedule";
 import WaitingConfirmationModal from "./waiting-confirmation-modal";
 import { logout } from "@/lib/backend/dashboard-data";
+import LoadingSpinner from "../loading-spinner";
 
 const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const navigation = [
@@ -27,6 +28,36 @@ const currencyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
 });
+const monthFormatter = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "Australia/Sydney" });
+
+const eventDateFormatter = new Intl.DateTimeFormat("en-AU", {
+  dateStyle: "short",
+  timeStyle: "short",
+  timeZone: "Australia/Sydney",
+});
+const eventTimeFormatter = new Intl.DateTimeFormat("en-AU", {
+  timeStyle: "short",
+  timeZone: "Australia/Sydney",
+});
+
+function formatEventDate(value: string) {
+  return eventDateFormatter.format(new Date(value));
+}
+
+function formatEventTime(value: string) {
+  return eventTimeFormatter.format(new Date(value));
+}
+
+function calendarDateKey(value: string | Date) {
+  if (typeof value === "string") {
+    // The event date is already encoded in the first ten characters of the
+    // database ISO value. Do not convert it through the browser timezone: a
+    // Sydney event can otherwise move from the 23rd to the 24th.
+    return value.slice(0, 10);
+  }
+
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
 
 // text-base (16px) stops iOS Safari zooming the page when a field is focused
 const fieldClass =
@@ -92,8 +123,15 @@ export default function ScheduleCalendar({
   waitingConfirmations: ScheduleEvent[];
 }) {
   const currentDate = new Date();
+  const firstEventDate = events.length
+    ? new Date(
+        Math.min(
+          ...events.map((event) => new Date(event.starts_at).getTime()),
+        ),
+      )
+    : currentDate;
   const [month, setMonth] = useState(
-    new Date(currentDate.getFullYear(), currentDate.getMonth(), 1),
+    new Date(firstEventDate.getFullYear(), firstEventDate.getMonth(), 1),
   );
   const [isOpen, setIsOpen] = useState(false);
   const [message, setMessage] = useState("");
@@ -105,6 +143,9 @@ export default function ScheduleCalendar({
   // membership_id -> amount in dollars (as typed)
   const [chargeInputs, setChargeInputs] = useState<Record<string, string>>({});
   const [chargesLoading, setChargesLoading] = useState(false);
+  const [eventSaving, setEventSaving] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [deleteAction, setDeleteAction] = useState<"event" | "series" | null>(null);
   const [editScope, setEditScope] = useState<"instance" | "series">("instance");
   const [selectedDate, setSelectedDate] = useState("");
   const [repeatWeeks, setRepeatWeeks] = useState("0");
@@ -119,13 +160,15 @@ export default function ScheduleCalendar({
   });
 
   function eventsFor(day: Date) {
+    const dayKey = calendarDateKey(day);
     return events.filter(
       (event) =>
-        new Date(event.starts_at).toDateString() === day.toDateString(),
+        calendarDateKey(event.starts_at) === dayKey,
     );
   }
 
   async function submit(formData: FormData) {
+    setEventSaving(true);
     setMessage("");
     const cost = Math.round(
       (Number(formData.get("costCents") ?? 0) || 0) * 100,
@@ -138,8 +181,9 @@ export default function ScheduleCalendar({
       );
     if (charges !== cost) {
       setMessage(
-        `Member charges must add up to the event cost. Current total: ${(charges / 100).toFixed(2)}.`,
+        `Member charges must add up to the event cost. Current total: $${(charges / 100).toFixed(2)}.`,
       );
+      setEventSaving(false);
       return;
     }
     const result = await createScheduleEvent(formData);
@@ -148,9 +192,12 @@ export default function ScheduleCalendar({
       setMessage("Event added.");
       setIsOpen(false);
     }
+    setEventSaving(false);
   }
 
   async function startEdit(event: ScheduleEvent) {
+    setIsOpen(false);
+    setSelectedEvent(event);
     setMessage("");
     setEditScope("instance");
     setChargeInputs({});
@@ -167,6 +214,7 @@ export default function ScheduleCalendar({
   }
 
   async function saveEdit(formData: FormData) {
+    setEditSaving(true);
     setMessage("");
     const cost = Math.round(
       (Number(formData.get("costCents") ?? 0) || 0) * 100,
@@ -178,23 +226,27 @@ export default function ScheduleCalendar({
     );
     if (total !== cost) {
       setMessage(
-        `Member charges must add up to the event cost. Current total: ${(total / 100).toFixed(2)}.`,
+          `Member charges must add up to the event cost. Current total: $${(total / 100).toFixed(2)}.`,
       );
+      setEditSaving(false);
       return;
     }
     const result = await updateScheduleEvent(formData);
     if (result.error) {
       setMessage(result.error);
+      setEditSaving(false);
       return;
     }
     const chargesResult = await saveEventMemberCharges(formData);
     if (chargesResult.error) {
       setMessage(chargesResult.error);
+      setEditSaving(false);
       return;
     }
     setSelectedEvent(null);
     setIsEditing(false);
     setMessage("Event updated.");
+    setEditSaving(false);
   }
 
   function editEventForm() {
@@ -398,6 +450,7 @@ export default function ScheduleCalendar({
       !window.confirm(all ? "Delete the entire series?" : "Delete this event?")
     )
       return;
+    setDeleteAction(all ? "series" : "event");
     const data = new FormData();
     data.set("eventId", selectedEvent.id);
     if (all && selectedEvent.series_id)
@@ -408,9 +461,22 @@ export default function ScheduleCalendar({
       setSelectedEvent(null);
       setMessage("Event deleted.");
     }
+    setDeleteAction(null);
   }
 
   function openAddForDate(day: Date) {
+    const dayEvents = eventsFor(day);
+    if (dayEvents.length) {
+      const event = dayEvents[0];
+      setIsOpen(false);
+      setMessage("");
+      setSelectedEvent(event);
+      setIsEditing(isAdmin && event.status !== "completed");
+      if (isAdmin && event.status !== "completed") {
+        void startEdit(event);
+      }
+      return;
+    }
     if (!isAdmin) return;
     setMessage("");
     setSelectedDate(
@@ -527,7 +593,7 @@ export default function ScheduleCalendar({
                       <b>{event.title}</b>
                       <br />
                       <span className="text-[#69727d]">
-                        {new Date(event.ends_at).toLocaleString()}
+                        {formatEventDate(event.ends_at)}
                       </span>
                     </span>
                     <span className="font-semibold text-[#e95a27]">Review</span>
@@ -539,10 +605,7 @@ export default function ScheduleCalendar({
           <section className="mt-8 overflow-hidden rounded-2xl border border-[#e8e1e9] bg-white shadow-sm">
             <div className="flex items-center justify-between border-b px-5 py-4">
               <h2 className="text-lg font-semibold text-[#17202a]">
-                {month.toLocaleDateString("en-US", {
-                  month: "long",
-                  year: "numeric",
-                })}
+                {monthFormatter.format(month)}
               </h2>
               <div className="flex gap-2">
                 <button
@@ -612,8 +675,9 @@ export default function ScheduleCalendar({
                         clickEvent.stopPropagation();
                         setSelectedEvent(event);
                       }}
-                      className={`mt-1 block w-full truncate rounded px-1 text-left text-xs hover:bg-[#ffe3d5] ${event.status === "completed" ? "bg-[#eefbf4] text-[#24734b]" : "bg-[#fff1e9] text-[#a04420]"}`}
+                      className={`mt-1 flex min-h-8 w-full items-center gap-1.5 truncate rounded-lg px-2 py-1.5 text-left text-sm font-medium leading-5 hover:bg-[#ffe3d5] ${event.status === "completed" ? "bg-[#eefbf4] text-[#24734b]" : "bg-[#fff1e9] text-[#a04420]"}`}
                     >
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
                       {event.title}
                     </button>
                   ))}
@@ -630,7 +694,7 @@ export default function ScheduleCalendar({
           onClose={() => setReviewEvent(null)}
         />
       )}
-      {selectedEvent && (
+      {selectedEvent && !isEditing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-5">
           <div className="w-full max-w-md rounded-t-3xl bg-white p-5 shadow-2xl sm:rounded-3xl sm:p-7">
             <div className="flex items-center justify-between">
@@ -654,8 +718,8 @@ export default function ScheduleCalendar({
               <p>
                 <b>When</b>
                 <br />
-                {new Date(selectedEvent.starts_at).toLocaleString()} &rarr;{" "}
-                {new Date(selectedEvent.ends_at).toLocaleTimeString()}
+                {formatEventDate(selectedEvent.starts_at)} &rarr;{" "}
+                {formatEventTime(selectedEvent.ends_at)}
               </p>
               {selectedEvent.location && (
                 <p>
@@ -704,17 +768,19 @@ export default function ScheduleCalendar({
                   <button
                     type="button"
                     onClick={() => void removeEvent(false)}
-                    className="rounded-xl border border-[#e7b4a7] bg-[#fff4ed] px-3 py-2.5 text-sm font-semibold text-[#a04420] hover:bg-[#ffe5dc]"
+                    disabled={deleteAction !== null}
+                    className="flex items-center justify-center rounded-xl border border-[#e7b4a7] bg-[#fff4ed] px-3 py-2.5 text-sm font-semibold text-[#a04420] hover:bg-[#ffe5dc] disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Delete event
+                    {deleteAction === "event" ? <LoadingSpinner label="Deleting..." /> : "Delete event"}
                   </button>
                   {selectedEvent.series_id && (
                     <button
                       type="button"
                       onClick={() => void removeEvent(true)}
-                      className="rounded-xl border border-[#d99b8d] bg-[#fce9e4] px-3 py-2.5 text-sm font-semibold text-[#8e2f1e] hover:bg-[#f8d9d1]"
+                      disabled={deleteAction !== null}
+                      className="flex items-center justify-center rounded-xl border border-[#d99b8d] bg-[#fce9e4] px-3 py-2.5 text-sm font-semibold text-[#8e2f1e] hover:bg-[#f8d9d1] disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Delete series
+                      {deleteAction === "series" ? <LoadingSpinner label="Deleting..." /> : "Delete series"}
                     </button>
                   )}
                 </>
@@ -725,7 +791,7 @@ export default function ScheduleCalendar({
       )}
 
       {isEditing && editEventForm()}
-      {isOpen && (
+      {isOpen && !selectedEvent && !isEditing && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-0 sm:items-center sm:p-5">
           <form
             onSubmit={(event) => {
@@ -763,14 +829,14 @@ export default function ScheduleCalendar({
             {isAdmin && (
               <>
                 <label className="block text-sm font-medium text-[#303942]">
-                  Total cost
+                  Total cost ($)
                   <input
                     name="costCents"
                     type="number"
                     inputMode="decimal"
                     min="0"
                     step="0.01"
-                    placeholder="0.00"
+                    placeholder="$0.00"
                     className={`${fieldClass} mt-1.5`}
                   />
                 </label>
@@ -784,14 +850,15 @@ export default function ScheduleCalendar({
                         key={member.id}
                         className="grid grid-cols-[minmax(0,1fr)_7rem] items-center gap-3 text-sm"
                       >
-                        <span className="truncate">{member.name}</span>
+                        <span className="truncate">{member.name} ($)</span>
                         <input
                           name={`charge_${member.id}`}
                           type="number"
                           inputMode="decimal"
                           min="0"
                           step="0.01"
-                          defaultValue="0"
+                           defaultValue="0"
+                           placeholder="$0.00"
                           className="h-10 w-full min-w-0 rounded-lg border px-3 text-base"
                         />
                       </label>
@@ -893,9 +960,10 @@ export default function ScheduleCalendar({
             )}
             <button
               type="submit"
-              className="h-11 w-full rounded-xl bg-[#ff6b35] font-semibold text-white"
+              disabled={eventSaving}
+              className="flex h-11 w-full items-center justify-center rounded-xl bg-[#ff6b35] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Save event
+              {eventSaving ? <LoadingSpinner label="Saving event..." /> : "Save event"}
             </button>
           </form>
         </div>

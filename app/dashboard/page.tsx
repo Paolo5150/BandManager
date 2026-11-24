@@ -3,6 +3,7 @@ import { getDashboardData } from "@/lib/backend/dashboard-data";
 import { getUpcomingOverviewEvents, type ScheduleEvent } from "@/lib/backend/schedule";
 import DashboardShell from "./dashboard-shell";
 import PageHeader from "./page-header";
+import { formatDateTime } from "@/lib/date-format";
 
 export const instant = false;
 
@@ -14,7 +15,7 @@ function EventCard({ event, label }: { event: ScheduleEvent | null; label: strin
         <>
           <h2 className="mt-2 break-words text-lg font-semibold text-[#17202a] sm:text-xl">{event.title}</h2>
           <dl className="mt-3 space-y-2 text-sm">
-            <div><dt className="font-medium text-[#303942]">When</dt><dd className="text-[#69727d]">{new Date(event.starts_at).toLocaleString()} &rarr; {new Date(event.ends_at).toLocaleTimeString()}</dd></div>
+            <div><dt className="font-medium text-[#303942]">When</dt><dd className="text-[#69727d]">{formatDateTime(event.starts_at)} &rarr; {formatDateTime(event.ends_at)}</dd></div>
             {event.location && <div><dt className="font-medium text-[#303942]">Location</dt><dd className="break-words text-[#69727d]">{event.location}</dd></div>}
             {event.notes && <div><dt className="font-medium text-[#303942]">Notes</dt><dd className="whitespace-pre-wrap break-words text-[#69727d]">{event.notes}</dd></div>}
           </dl>

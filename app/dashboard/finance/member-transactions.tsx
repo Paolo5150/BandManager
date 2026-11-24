@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { getTransactionsForMembership, type LedgerTransaction } from "@/lib/backend/finance";
 import { ChevronDownIcon } from "../icons";
+import { formatDate } from "@/lib/date-format";
 
 export default function MemberTransactions({ membershipId }: { membershipId: string }) {
   const [open, setOpen] = useState(false);
@@ -36,9 +37,9 @@ export default function MemberTransactions({ membershipId }: { membershipId: str
               <div className="min-w-0">
                 <p className="break-words text-[#303942]"><span className="capitalize">{row.kind}</span>{row.eventName ? ` · ${row.eventName}` : ""}</p>
                 {row.note && <p className="break-words text-xs text-[#69727d]">{row.note}</p>}
-                <p className="text-xs text-[#a0a5aa]">{new Date(row.createdAt).toLocaleDateString()}</p>
+                <p className="text-xs text-[#a0a5aa]">{formatDate(row.createdAt)}</p>
               </div>
-              <span className={`shrink-0 font-semibold tabular-nums ${row.amountCents < 0 ? "text-[#a04420]" : "text-[#24734b]"}`}>{(row.amountCents / 100).toFixed(2)}</span>
+              <span className={`shrink-0 font-semibold tabular-nums ${row.amountCents < 0 ? "text-[#a04420]" : "text-[#24734b]"}`}>{row.amountCents < 0 ? "-$" : "$"}{Math.abs(row.amountCents / 100).toFixed(2)}</span>
             </div>
           )) : <p className="py-2 text-sm text-[#69727d]">No transactions yet.</p>}
         </div>

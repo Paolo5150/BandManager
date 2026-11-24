@@ -28,8 +28,8 @@ export default function BalanceAdjustment({ membershipId, open, onOpen, onClose 
   return (
     <form onSubmit={submit} className="w-full rounded-xl border border-[#f3d9cf] bg-[#fffaf7] p-3">
       <input type="hidden" name="membershipId" value={membershipId} />
-      <label className="block text-xs font-medium text-[#a04420]">Set fixed balance amount
-        <input name="amount" type="number" inputMode="decimal" step="0.01" placeholder="0.00" required autoFocus className="mt-1.5 h-10 w-full rounded-lg border border-[#ddd8d1] bg-white px-3 text-sm text-[#17202a]" />
+      <label className="block text-xs font-medium text-[#a04420]">Set fixed balance amount ($)
+        <input name="amount" type="number" inputMode="decimal" step="0.01" placeholder="$0.00" required autoFocus className="mt-1.5 h-10 w-full rounded-lg border border-[#ddd8d1] bg-white px-3 text-sm text-[#17202a]" />
       </label>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button type="button" onClick={() => { setMessage(""); onClose(); }} className="h-10 rounded-lg bg-white text-sm font-semibold text-[#303942] ring-1 ring-[#e8e1e9]">Cancel</button>

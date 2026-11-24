@@ -8,6 +8,23 @@ export type ScheduleMember = { id: string; name: string };
 export type ScheduleEvent = { id: string; series_id?: string | null; type: string; title: string; starts_at: string; ends_at: string; location?: string | null; notes?: string | null; cost_cents?: number | null; status?: string };
 export type EventCharge = { id: string; membership_id?: string | null; member_name?: string | null; amount_cents: number };
 
+function sydneyDateTime(date: string, time: string): Date {
+  const [year, month, day] = date.split("-").map(Number);
+  const [hours, minutes] = time.split(":").map(Number);
+  const guess = new Date(Date.UTC(year, month - 1, day, hours, minutes));
+  const parts = new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Sydney",
+    timeZoneName: "shortOffset",
+    year: "numeric",
+  }).formatToParts(guess);
+  const offset = parts.find((part) => part.type === "timeZoneName")?.value ?? "GMT+11";
+  const match = offset.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+  const offsetMinutes = match
+    ? (Number(match[2]) * 60 + Number(match[3] ?? 0)) * (match[1] === "-" ? -1 : 1)
+    : 660;
+  return new Date(guess.getTime() - offsetMinutes * 60_000);
+}
+
 export async function getEventCharges(eventId: string): Promise<EventCharge[]> {
   const context = await getContext();
   if (!context?.isAdmin || !eventId) return [];
@@ -121,9 +138,12 @@ export async function updateScheduleEvent(formData: FormData): Promise<{ error?:
   const date = String(formData.get("date") ?? "");
   const startsAt = String(formData.get("startsAt") ?? "");
   const endsAt = String(formData.get("endsAt") ?? "");
-  const start = new Date(`${date}T${startsAt}`);
-  const end = new Date(`${date}T${endsAt}`);
-  if (!date || !startsAt || !endsAt || end <= start) return { error: "Enter a valid date and time range." };
+  const start = sydneyDateTime(date, startsAt);
+  const end = sydneyDateTime(date, endsAt);
+  const [startHours, startMinutes] = startsAt.split(":").map(Number);
+  const [endHours, endMinutes] = endsAt.split(":").map(Number);
+  const durationMinutes = endHours * 60 + endMinutes - (startHours * 60 + startMinutes);
+  if (!date || !startsAt || !endsAt || !Number.isFinite(durationMinutes) || durationMinutes <= 0) return { error: "Enter a valid date and time range." };
   const hasFinanceFields = formData.has("costCents");
   if (!context.isAdmin && hasFinanceFields) return { error: "Only admins can edit event finance details." };
   const band = `band_id=eq.${encodeURIComponent(context.bandId)}`;
@@ -225,9 +245,12 @@ export async function createScheduleEvent(formData: FormData): Promise<{ error?:
   const date = String(formData.get("date") ?? "");
   const startsAt = String(formData.get("startsAt") ?? "");
   const endsAt = String(formData.get("endsAt") ?? "");
-  const start = new Date(`${date}T${startsAt}`);
-  const end = new Date(`${date}T${endsAt}`);
-  if (!date || !startsAt || !endsAt || end <= start) return { error: "Enter a valid date and time range." };
+  const start = sydneyDateTime(date, startsAt);
+  const end = sydneyDateTime(date, endsAt);
+  const [startHours, startMinutes] = startsAt.split(":").map(Number);
+  const [endHours, endMinutes] = endsAt.split(":").map(Number);
+  const durationMinutes = endHours * 60 + endMinutes - (startHours * 60 + startMinutes);
+  if (!date || !startsAt || !endsAt || !Number.isFinite(durationMinutes) || durationMinutes <= 0) return { error: "Enter a valid date and time range." };
   const repeatWeeks = Number(formData.get("repeatWeeks") ?? "0");
   const repeatUntil = String(formData.get("repeatUntil") ?? "");
   const location = String(formData.get("location") ?? "").trim() || null;
@@ -240,15 +263,17 @@ export async function createScheduleEvent(formData: FormData): Promise<{ error?:
   const headers = { ...context.headers, "Content-Type": "application/json", Prefer: "return=representation" };
   let seriesId: string | null = null;
   if ([1, 2, 3].includes(repeatWeeks)) {
-    const response = await fetch(`${context.url}/rest/v1/event_series`, { method: "POST", headers, body: JSON.stringify({ band_id: context.bandId, title, start_date: date, start_time: startsAt, duration_minutes: Math.round((end.getTime() - start.getTime()) / 60000), interval_weeks: repeatWeeks, end_date: repeatUntil || null, location, notes, cost_cents: costCents, created_by: context.userId }), cache: "no-store" });
+    const response = await fetch(`${context.url}/rest/v1/event_series`, { method: "POST", headers, body: JSON.stringify({ band_id: context.bandId, title, start_date: date, start_time: startsAt, duration_minutes: durationMinutes, interval_weeks: repeatWeeks, end_date: repeatUntil || null, location, notes, cost_cents: costCents, created_by: context.userId }), cache: "no-store" });
     const series = (await response.json().catch(() => null)) as { id?: string }[] | null;
     if (!response.ok || !series?.[0]?.id) return { error: "Unable to create the recurring event." };
     seriesId = series[0].id;
   }
-  const until = repeatWeeks ? (repeatUntil ? new Date(`${repeatUntil}T23:59:59`) : new Date(start.getTime() + 52 * 7 * 86400000)) : start;
+  const until = repeatWeeks ? (repeatUntil ? new Date(`${repeatUntil}T23:59:59Z`) : new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() + 52 * 7))) : start;
   const events: Record<string, unknown>[] = [];
-  for (let current = new Date(start); current <= until; current = new Date(current.getTime() + (repeatWeeks || 52) * 7 * 86400000)) {
-    events.push({ band_id: context.bandId, series_id: seriesId, type, title, starts_at: current.toISOString(), ends_at: new Date(current.getTime() + end.getTime() - start.getTime()).toISOString(), location, notes, cost_cents: costCents || null, created_by: context.userId });
+  for (let current = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate())); current <= until; current.setUTCDate(current.getUTCDate() + (repeatWeeks || 52) * 7)) {
+    const currentDate = `${current.getUTCFullYear()}-${String(current.getUTCMonth() + 1).padStart(2, "0")}-${String(current.getUTCDate()).padStart(2, "0")}`;
+    const currentStart = sydneyDateTime(currentDate, startsAt);
+    events.push({ band_id: context.bandId, series_id: seriesId, type, title, starts_at: currentStart.toISOString(), ends_at: new Date(currentStart.getTime() + durationMinutes * 60_000).toISOString(), location, notes, cost_cents: costCents || null, created_by: context.userId });
     if (!repeatWeeks) break;
   }
   const response = await fetch(`${context.url}/rest/v1/events`, { method: "POST", headers, body: JSON.stringify(events), cache: "no-store" });
