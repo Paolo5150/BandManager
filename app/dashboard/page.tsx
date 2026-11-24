@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { connection } from "next/server";
 import { getDashboardData, logout } from "@/lib/backend/dashboard-data";
+import { getUpcomingOverviewEvents, type ScheduleEvent } from "@/lib/backend/schedule";
 
 export const instant = false;
 
@@ -15,7 +16,10 @@ const navigation = [
 
 export default async function DashboardPage() {
   await connection();
-  const { userName, bandName } = await getDashboardData();
+  const [{ userName, bandName }, { next, nextGig }] = await Promise.all([getDashboardData(), getUpcomingOverviewEvents()]);
+  function EventCard({ event, label }: { event: ScheduleEvent | null; label: string }) {
+    return <section className="rounded-2xl border border-[#e8e1e9] bg-white p-5 shadow-sm"><p className="text-xs font-semibold uppercase tracking-wider text-[#ff6b35]">{label}</p>{event ? <><h2 className="mt-2 text-xl font-semibold text-[#17202a]">{event.title}</h2><p className="mt-2 text-sm text-[#69727d]"><b>When:</b> {new Date(event.starts_at).toLocaleString()} &rarr; {new Date(event.ends_at).toLocaleTimeString()}</p>{event.location && <p className="mt-2 text-sm text-[#69727d]"><b>Location:</b> {event.location}</p>}{event.notes && <p className="mt-2 whitespace-pre-wrap text-sm text-[#69727d]"><b>Notes:</b> {event.notes}</p>}</> : <p className="mt-3 text-sm text-[#69727d]">No upcoming event.</p>}</section>;
+  }
 
   return (
     <div className="flex min-h-screen bg-[#f8f5f1]">
@@ -68,6 +72,7 @@ export default async function DashboardPage() {
           <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#ff6b35]">Overview</p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[#17202a]">Good to see you, {userName}</h1>
           <p className="mt-2 text-sm text-[#69727d]">Your band workspace is ready to take shape.</p>
+          <div className="mt-8 grid gap-4 md:grid-cols-2"><EventCard event={next} label="Next event" /><EventCard event={nextGig} label="Next gig" /></div>
         </div>
       </main>
     </div>

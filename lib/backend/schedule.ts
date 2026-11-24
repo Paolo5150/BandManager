@@ -93,6 +93,21 @@ export async function getScheduleEvents(): Promise<ScheduleEvent[]> {
   return response.ok ? ((await response.json().catch(() => [])) as ScheduleEvent[]) : [];
 }
 
+export async function getUpcomingOverviewEvents(): Promise<{ next: ScheduleEvent | null; nextGig: ScheduleEvent | null }> {
+  const context = await getContext();
+  if (!context) return { next: null, nextGig: null };
+  const now = encodeURIComponent(new Date().toISOString());
+  const select = "id,series_id,type,title,starts_at,ends_at,location,notes,status";
+  const base = `band_id=eq.${encodeURIComponent(context.bandId)}&status=eq.scheduled&starts_at=gte.${now}&order=starts_at.asc&limit=1`;
+  const [nextResponse, gigResponse] = await Promise.all([
+    fetch(`${context.url}/rest/v1/events?select=${select}&${base}`, { headers: context.headers, cache: "no-store" }),
+    fetch(`${context.url}/rest/v1/events?select=${select}&${base.replace("&order", "&type=eq.gig&order")}`, { headers: context.headers, cache: "no-store" }),
+  ]);
+  const next = (await nextResponse.json().catch(() => [])) as ScheduleEvent[];
+  const nextGig = (await gigResponse.json().catch(() => [])) as ScheduleEvent[];
+  return { next: nextResponse.ok ? next[0] ?? null : null, nextGig: gigResponse.ok ? nextGig[0] ?? null : null };
+}
+
 export async function updateScheduleEvent(formData: FormData): Promise<{ error?: string }> {
   const context = await getContext();
   const id = String(formData.get("eventId") ?? "");
