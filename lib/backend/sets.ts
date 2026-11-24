@@ -38,7 +38,7 @@ export async function getSets(): Promise<BandSet[]> {
 }
 
 export async function createSet(formData: FormData): Promise<{ error?: string }> {
-  const c = await context(); if (!c?.isAdmin) return { error: "Only admins can create sets." };
+  const c = await context(); if (!c) return { error: "You must be a confirmed band member." };
   const name = String(formData.get("name") ?? "").trim(); const notes = String(formData.get("notes") ?? "").trim() || null;
   if (!name) return { error: "Enter a set name." };
   const rawItems = String(formData.get("items") ?? "[]");
@@ -55,7 +55,7 @@ export async function createSet(formData: FormData): Promise<{ error?: string }>
 
 export async function updateSetItems(formData: FormData): Promise<{ error?: string }> {
   const c = await context(); const setId = String(formData.get("setId") ?? "");
-  if (!c?.isAdmin || !setId) return { error: "Only admins can edit sets." };
+  if (!c || !setId) return { error: "You must be a confirmed band member." };
   let items: { type: "song" | "break"; song_id?: string; break_minutes?: number; label?: string }[];
   try {
     items = JSON.parse(String(formData.get("items") ?? "[]")) as typeof items;
@@ -75,7 +75,7 @@ export async function updateSetItems(formData: FormData): Promise<{ error?: stri
 
 export async function deleteSet(formData: FormData): Promise<{ error?: string }> {
   const c = await context(); const id = String(formData.get("setId") ?? "");
-  if (!c?.isAdmin || !id) return { error: "Only admins can remove sets." };
+  if (!c || !id) return { error: "You must be a confirmed band member." };
   const response = await fetch(`${c.url}/rest/v1/sets?id=eq.${encodeURIComponent(id)}&band_id=eq.${encodeURIComponent(c.bandId)}`, { method: "DELETE", headers: c.headers, cache: "no-store" });
   if (!response.ok) return { error: "Unable to remove the set." }; revalidatePath("/dashboard/sets"); return {};
 }

@@ -26,7 +26,7 @@ export async function getSongs(): Promise<Song[]> {
 
 export async function searchDeezerSongs(query: string): Promise<{ songs?: DeezerSong[]; error?: string }> {
   const context = await getContext();
-  if (!context?.isAdmin) return { error: "Only admins can search for songs." };
+  if (!context) return { error: "You must be a confirmed band member." };
   const trimmed = query.trim();
   if (!trimmed) return { error: "Enter part of a song title or artist." };
   try {
@@ -40,7 +40,7 @@ export async function searchDeezerSongs(query: string): Promise<{ songs?: Deezer
 }
 
 export async function createSong(formData: FormData): Promise<{ error?: string }> {
-  const context = await getContext(); if (!context?.isAdmin) return { error: "Only admins can add songs." };
+  const context = await getContext(); if (!context) return { error: "You must be a confirmed band member." };
   const title = String(formData.get("title") ?? "").trim(); if (!title) return { error: "Enter a song title." };
   const duration = Number(formData.get("durationSeconds") ?? 0);
   const body = { band_id: context.bandId, title, artist: String(formData.get("artist") ?? "").trim() || null, duration_seconds: Number.isFinite(duration) && duration > 0 ? Math.round(duration) : null, notes: String(formData.get("notes") ?? "").trim() || null };
@@ -50,7 +50,11 @@ export async function createSong(formData: FormData): Promise<{ error?: string }
 
 export async function deleteSong(formData: FormData): Promise<{ error?: string }> {
   const context = await getContext(); const songId = String(formData.get("songId") ?? "");
-  if (!context?.isAdmin) return { error: "Only admins can remove songs." }; if (!songId) return { error: "Song not found." };
+  if (!context) return { error: "You must be a confirmed band member." }; if (!songId) return { error: "Song not found." };
   const response = await fetch(`${context.url}/rest/v1/songs?id=eq.${encodeURIComponent(songId)}&band_id=eq.${encodeURIComponent(context.bandId)}`, { method: "DELETE", headers: context.headers, cache: "no-store" });
-  if (!response.ok) return { error: "Unable to remove the song." }; revalidatePath("/dashboard/songlist"); return {};
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    return { error: details.includes("set_items") || details.includes("foreign key") ? "This song is used in a set and cannot be removed." : "Unable to remove the song." };
+  }
+  revalidatePath("/dashboard/songlist"); return {};
 }
