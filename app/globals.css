@@ -38,3 +38,58 @@ html {
     font-size: 16px;
   }
 }
+
+.full-calendar-wrapper {
+  --fc-border-color: #e8e1e9;
+  --fc-button-bg-color: #ff6b35;
+  --fc-button-border-color: #ff6b35;
+  --fc-button-hover-bg-color: #e95a27;
+  --fc-button-hover-border-color: #e95a27;
+  --fc-today-bg-color: #fff4ed;
+  --fc-page-bg-color: #ffffff;
+  --fc-neutral-bg-color: #f8f5f1;
+  color: #303942;
+}
+
+.full-calendar-wrapper .fc {
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.full-calendar-wrapper .fc-toolbar {
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.full-calendar-wrapper .fc-toolbar-title {
+  font-size: 1.125rem;
+}
+
+.full-calendar-wrapper .fc-event {
+  cursor: pointer;
+  border-radius: 0.5rem;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+@media (max-width: 639px) {
+  .full-calendar-wrapper .fc-toolbar-title {
+    font-size: 1rem;
+  }
+
+  .full-calendar-wrapper .fc-toolbar-chunk {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  .full-calendar-wrapper .fc-button {
+    min-height: 2.25rem;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.75rem;
+  }
+
+  .full-calendar-wrapper .fc-timegrid-slot {
+    height: 3.5rem;
+  }
+}

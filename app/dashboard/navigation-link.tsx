@@ -1,17 +1,22 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useTransition, type ReactNode, type MouseEvent } from "react";
+import { useEffect, useState, type ReactNode, type MouseEvent } from "react";
 
 export default function NavigationLink({ href, active, mobile = false, children }: { href: string; active: boolean; mobile?: boolean; children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [isPending, startTransition] = useTransition();
+  const [isPending, setIsPending] = useState(false);
+
+  useEffect(() => {
+    setIsPending(false);
+  }, [pathname]);
 
   function navigate(event: MouseEvent<HTMLAnchorElement>) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || href === pathname) return;
     event.preventDefault();
-    startTransition(() => router.push(href));
+    setIsPending(true);
+    router.push(href);
   }
 
   return (

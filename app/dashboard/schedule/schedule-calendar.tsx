@@ -1,6 +1,5 @@
 ﻿"use client";
 
-import Link from "next/link";
 import { useState, type InputHTMLAttributes } from "react";
 import {
   createScheduleEvent,
@@ -15,6 +14,9 @@ import {
 import WaitingConfirmationModal from "./waiting-confirmation-modal";
 import { logout } from "@/lib/backend/dashboard-data";
 import LoadingSpinner from "../loading-spinner";
+import LogoutButton from "../logout-button";
+import NavigationLink from "../navigation-link";
+import FullScheduleCalendar from "./full-calendar";
 
 const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const navigation = [
@@ -533,26 +535,17 @@ export default function ScheduleCalendar({
             Workspace
           </p>
           {navigation.map((item) => (
-            <Link
+            <NavigationLink
               key={item}
-              href={
-                item === "Overview"
-                  ? "/dashboard"
-                  : `/dashboard/${item === "Unavailable" ? "unavailability" : item.toLowerCase()}`
-              }
-              className={`rounded-xl px-3 py-3 text-sm ${item === "Schedule" ? "bg-[#fff1e9] text-[#e95a27]" : "text-[#69727d] hover:bg-[#f8f5f1]"}`}
+              href={item === "Overview" ? "/dashboard" : `/dashboard/${item === "Unavailable" ? "unavailability" : item.toLowerCase()}`}
+              active={item === "Schedule"}
             >
               {item}
-            </Link>
+            </NavigationLink>
           ))}
         </nav>
         <form action={logout}>
-          <button
-            type="submit"
-            className="w-full border-t border-[#eee9e3] px-3 pt-5 text-left text-sm text-[#69727d]"
-          >
-            Log out
-          </button>
+          <LogoutButton className="w-full border-t border-[#eee9e3] px-3 pt-5 text-left text-sm text-[#69727d]" />
         </form>
       </aside>
 
@@ -560,17 +553,14 @@ export default function ScheduleCalendar({
         <div className="mx-auto min-w-0 max-w-6xl">
           <nav className="mb-6 flex gap-2 overflow-x-auto pb-1 md:hidden">
             {navigation.map((item) => (
-              <Link
+              <NavigationLink
                 key={item}
-                href={
-                  item === "Overview"
-                    ? "/dashboard"
-                  : `/dashboard/${item === "Unavailable" ? "unavailability" : item.toLowerCase()}`
-                }
-                className="shrink-0 rounded-lg bg-white px-3 py-2 text-sm text-[#69727d]"
+                href={item === "Overview" ? "/dashboard" : `/dashboard/${item === "Unavailable" ? "unavailability" : item.toLowerCase()}`}
+                active={item === "Schedule"}
+                mobile
               >
                 {item}
-              </Link>
+              </NavigationLink>
             ))}
           </nav>
           <div className="flex flex-wrap items-end justify-between gap-4">
@@ -621,7 +611,10 @@ export default function ScheduleCalendar({
               </div>
             </section>
           )}
-          <section className="mt-8 overflow-hidden rounded-2xl border border-[#e8e1e9] bg-white shadow-sm">
+          <section className="mt-8 rounded-2xl border border-[#e8e1e9] bg-white p-3 shadow-sm sm:p-5">
+            <FullScheduleCalendar events={events} unavailability={unavailability} onEvent={(event) => setSelectedEvent(event)} onDate={(date) => { if (isAdmin) { setSelectedDate(date); setIsOpen(true); } }} onUnavailable={(names) => setMessage(`Unavailable: ${names.join(", ")}`)} />
+          </section>
+          <section className="hidden mt-8 overflow-hidden rounded-2xl border border-[#e8e1e9] bg-white shadow-sm">
             <div className="flex items-center justify-between border-b px-5 py-4">
               <h2 className="text-lg font-semibold text-[#17202a]">
                 {calendarView === "week" ? `${monthFormatter.format(days[0])} - ${monthFormatter.format(days[6])}` : monthFormatter.format(month)}

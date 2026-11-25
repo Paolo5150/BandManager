@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { logout } from "@/lib/backend/dashboard-data";
 import NavigationLink from "./navigation-link";
+import LogoutButton from "./logout-button";
 
 const navigation = [
   { label: "Overview", href: "/dashboard" },
@@ -36,7 +37,7 @@ export default function DashboardShell({ active, wide = false, children }: { act
           ))}
         </nav>
         <form action={logout} className="border-t border-[#eee9e3] pt-4">
-          <button type="submit" className="w-full rounded-xl px-3 py-3 text-left text-sm font-medium text-[#69727d] transition hover:bg-[#f8f5f1] hover:text-[#17202a]">Log out</button>
+          <LogoutButton className="w-full rounded-xl px-3 py-3 text-left text-sm font-medium text-[#69727d] transition hover:bg-[#f8f5f1] hover:text-[#17202a]" />
         </form>
       </aside>
 
@@ -45,7 +46,7 @@ export default function DashboardShell({ active, wide = false, children }: { act
           <div className="flex items-center justify-between px-4 pt-3">
             <Logo />
             <form action={logout}>
-              <button type="submit" className="rounded-lg px-2 py-1.5 text-sm font-medium text-[#69727d] hover:bg-[#f8f5f1]">Log out</button>
+              <LogoutButton className="rounded-lg px-2 py-1.5 text-sm font-medium text-[#69727d] hover:bg-[#f8f5f1]" />
             </form>
           </div>
           <nav className="flex gap-1 overflow-x-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Mobile dashboard navigation">

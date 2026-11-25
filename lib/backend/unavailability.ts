@@ -33,7 +33,8 @@ export async function addUnavailability(formData: FormData): Promise<{ error?: s
   const startDate = String(formData.get("startDate") ?? "");
   const endDate = String(formData.get("endDate") ?? "");
   if (!c) return { error: "You must be a confirmed band member." };
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate) || endDate < startDate) return { error: "Choose a valid date range." };
+  const dateTimePattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+  if (!dateTimePattern.test(startDate) || !dateTimePattern.test(endDate) || endDate <= startDate) return { error: "Choose a valid date and time range." };
   const response = await fetch(`${c.url}/rest/v1/unavailability`, { method: "POST", headers: { ...c.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ membership_id: c.membershipId, start_date: startDate, end_date: endDate }), cache: "no-store" });
   if (!response.ok) return { error: "Unable to save your unavailability." };
   revalidatePath("/dashboard/unavailability");
@@ -50,4 +51,17 @@ export async function deleteUnavailability(formData: FormData): Promise<{ error?
   revalidatePath("/dashboard/unavailability");
   revalidatePath("/dashboard/schedule");
   return {};
+}
+
+export async function updateUnavailability(formData: FormData): Promise<{ error?: string }> {
+  const c = await context();
+  const id = String(formData.get("id") ?? "");
+  const startDate = String(formData.get("startDate") ?? "");
+  const endDate = String(formData.get("endDate") ?? "");
+  const pattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
+  if (!c || !id) return { error: "Unavailability not found." };
+  if (!pattern.test(startDate) || !pattern.test(endDate) || endDate <= startDate) return { error: "Choose a valid date and time range." };
+  const response = await fetch(`${c.url}/rest/v1/unavailability?id=eq.${encodeURIComponent(id)}&membership_id=eq.${encodeURIComponent(c.membershipId)}`, { method: "PATCH", headers: { ...c.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ start_date: startDate, end_date: endDate }), cache: "no-store" });
+  if (!response.ok) return { error: "Unable to update your unavailability." };
+  revalidatePath("/dashboard/unavailability"); revalidatePath("/dashboard/schedule"); return {};
 }
