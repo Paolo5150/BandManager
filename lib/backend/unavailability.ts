@@ -5,6 +5,19 @@ import { revalidatePath } from "next/cache";
 
 export type Unavailability = { id: string; membership_id: string; member_name: string; start_date: string; end_date: string };
 
+/** Convert a datetime-local value entered in Sydney time to an unambiguous UTC timestamp. */
+function sydneyDateTime(value: string): Date {
+  const [date, time] = value.split("T");
+  const [year, month, day] = date.split("-").map(Number);
+  const [hours, minutes] = time.split(":").map(Number);
+  const guess = new Date(Date.UTC(year, month - 1, day, hours, minutes));
+  const parts = new Intl.DateTimeFormat("en-AU", { timeZone: "Australia/Sydney", timeZoneName: "shortOffset", year: "numeric" }).formatToParts(guess);
+  const offset = parts.find((part) => part.type === "timeZoneName")?.value ?? "GMT+11";
+  const match = offset.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+  const offsetMinutes = match ? (Number(match[2]) * 60 + Number(match[3] ?? 0)) * (match[1] === "-" ? -1 : 1) : 660;
+  return new Date(guess.getTime() - offsetMinutes * 60_000);
+}
+
 async function context() {
   const token = await getAccessToken();
   const url = process.env.SUPABASE_URL;
@@ -35,7 +48,7 @@ export async function addUnavailability(formData: FormData): Promise<{ error?: s
   if (!c) return { error: "You must be a confirmed band member." };
   const dateTimePattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
   if (!dateTimePattern.test(startDate) || !dateTimePattern.test(endDate) || endDate <= startDate) return { error: "Choose a valid date and time range." };
-  const response = await fetch(`${c.url}/rest/v1/unavailability`, { method: "POST", headers: { ...c.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ membership_id: c.membershipId, start_date: startDate, end_date: endDate }), cache: "no-store" });
+  const response = await fetch(`${c.url}/rest/v1/unavailability`, { method: "POST", headers: { ...c.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ membership_id: c.membershipId, start_date: sydneyDateTime(startDate).toISOString(), end_date: sydneyDateTime(endDate).toISOString() }), cache: "no-store" });
   if (!response.ok) return { error: "Unable to save your unavailability." };
   revalidatePath("/dashboard/unavailability");
   revalidatePath("/dashboard/schedule");
@@ -61,7 +74,7 @@ export async function updateUnavailability(formData: FormData): Promise<{ error?
   const pattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
   if (!c || !id) return { error: "Unavailability not found." };
   if (!pattern.test(startDate) || !pattern.test(endDate) || endDate <= startDate) return { error: "Choose a valid date and time range." };
-  const response = await fetch(`${c.url}/rest/v1/unavailability?id=eq.${encodeURIComponent(id)}&membership_id=eq.${encodeURIComponent(c.membershipId)}`, { method: "PATCH", headers: { ...c.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ start_date: startDate, end_date: endDate }), cache: "no-store" });
+  const response = await fetch(`${c.url}/rest/v1/unavailability?id=eq.${encodeURIComponent(id)}&membership_id=eq.${encodeURIComponent(c.membershipId)}`, { method: "PATCH", headers: { ...c.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ start_date: sydneyDateTime(startDate).toISOString(), end_date: sydneyDateTime(endDate).toISOString() }), cache: "no-store" });
   if (!response.ok) return { error: "Unable to update your unavailability." };
   revalidatePath("/dashboard/unavailability"); revalidatePath("/dashboard/schedule"); return {};
 }
