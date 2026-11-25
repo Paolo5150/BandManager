@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
 export type ScheduleMember = { id: string; name: string };
 export type ScheduleEvent = { id: string; series_id?: string | null; type: string; title: string; starts_at: string; ends_at: string; location?: string | null; notes?: string | null; cost_cents?: number | null; status?: string };
 export type EventCharge = { id: string; membership_id?: string | null; member_name?: string | null; amount_cents: number };
-export type ScheduleUnavailability = { id: string; start_date: string; end_date: string; member_name: string };
+export type ScheduleUnavailability = { id: string; membership_id: string; start_date: string; end_date: string; member_name: string };
 
 function sydneyDateTime(date: string, time: string): Date {
   const [year, month, day] = date.split("-").map(Number);
