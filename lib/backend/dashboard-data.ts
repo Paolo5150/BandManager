@@ -1,6 +1,5 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { clearSession, getAccessToken } from "@/lib/backend/session";
 import { redirect } from "next/navigation";
 

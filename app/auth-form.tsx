@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
 import { signup } from "@/lib/backend/signup";
 import { createBand } from "@/lib/backend/create-band";
 import { login } from "@/lib/backend/login";
@@ -9,6 +10,7 @@ import LoadingSpinner from "./dashboard/loading-spinner";
 type Mode = "signup" | "login";
 
 export default function AuthForm({ inviteBandId: initialInviteBandId, invitedBandName }: { inviteBandId?: string; invitedBandName?: string }) {
+  const router = useRouter();
   const [mode, setMode] = useState<Mode>("signup");
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -58,7 +60,7 @@ export default function AuthForm({ inviteBandId: initialInviteBandId, invitedBan
           setIsError(true);
           setMessage(membershipResult.error);
         } else {
-          window.location.assign(isSignup || result.confirmed === false ? "/pending-confirmation" : "/dashboard");
+          router.push(isSignup || result.confirmed === false ? "/pending-confirmation" : "/dashboard");
         }
       } else if (result.userId && (isSignup || !result.hasBand)) {
         setUserId(result.userId);
@@ -66,7 +68,7 @@ export default function AuthForm({ inviteBandId: initialInviteBandId, invitedBan
         setPhoneNumber(String(formData.get("phone") ?? "").trim());
         setMessage("");
       } else {
-        window.location.assign(result.confirmed === false ? "/pending-confirmation" : "/dashboard");
+        router.push(result.confirmed === false ? "/pending-confirmation" : "/dashboard");
       }
     } catch {
       setIsError(true);
@@ -86,7 +88,7 @@ export default function AuthForm({ inviteBandId: initialInviteBandId, invitedBan
       setMessage(result.error);
       setIsError(true);
     } else {
-      window.location.assign("/dashboard");
+      router.push("/dashboard");
     }
     setIsSubmitting(false);
   }

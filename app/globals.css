@@ -40,6 +40,7 @@ html {
 }
 
 .full-calendar-wrapper {
+  container-type: inline-size;
   --fc-border-color: #e8e1e9;
   --fc-button-bg-color: #ff6b35;
   --fc-button-border-color: #ff6b35;
@@ -64,6 +65,16 @@ html {
   font-size: 1.125rem;
 }
 
+.full-calendar-wrapper .fc-col-header-cell-cushion {
+  padding: 0.6rem 0.25rem;
+  font-size: 0.8rem;
+}
+
+.full-calendar-wrapper .fc-daygrid-day-number {
+  padding: 0.35rem;
+  font-size: 0.85rem;
+}
+
 .full-calendar-wrapper .fc-event {
   cursor: pointer;
   border-radius: 0.5rem;
@@ -72,24 +83,64 @@ html {
   font-weight: 600;
 }
 
-@media (max-width: 639px) {
+.full-calendar-wrapper .fc-timegrid-slot {
+  height: 3rem;
+}
+
+.calendar-scroll-hint {
+  display: none;
+}
+
+@container (max-width: 650px) {
+  .full-calendar-wrapper .fc-header-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.75rem 0.5rem;
+  }
+
+  .full-calendar-wrapper .fc-header-toolbar > :nth-child(2) {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
   .full-calendar-wrapper .fc-toolbar-title {
     font-size: 1rem;
   }
 
-  .full-calendar-wrapper .fc-toolbar-chunk {
+  .full-calendar-wrapper .fc-header-toolbar > :first-child {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
+    align-items: center;
   }
 
-  .full-calendar-wrapper .fc-button {
-    min-height: 2.25rem;
+  .full-calendar-wrapper .fc .fc-button {
+    min-height: 2.5rem;
     padding: 0.35rem 0.55rem;
     font-size: 0.75rem;
   }
 
-  .full-calendar-wrapper .fc-timegrid-slot {
-    height: 3.5rem;
+  .full-calendar-wrapper .fc-view-harness:has(.fc-timegrid) {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .full-calendar-wrapper .fc-timegrid {
+    min-width: 42rem;
+  }
+
+  .full-calendar-wrapper .fc-daygrid-event {
+    padding: 0.1rem;
+    font-size: 0.7rem;
+  }
+
+  .full-calendar-wrapper .fc-daygrid-event .fc-event-time {
+    display: none;
+  }
+
+  .full-calendar-wrapper:has(.fc-timegrid) .calendar-scroll-hint {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #69727d;
+    font-size: 0.75rem;
   }
 }

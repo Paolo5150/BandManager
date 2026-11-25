@@ -16,53 +16,14 @@ import { logout } from "@/lib/backend/dashboard-data";
 import LoadingSpinner from "../loading-spinner";
 import LogoutButton from "../logout-button";
 import NavigationLink from "../navigation-link";
+import { navigation } from "../navigation";
 import FullScheduleCalendar from "./full-calendar";
+import { formatEventDateTime as formatEventDate, formatEventTime } from "@/lib/date-format";
 
-const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const navigation = [
-  "Overview",
-  "Members",
-  "Songlist",
-  "Sets",
-  "Schedule",
-  "Unavailable",
-  "Finance",
-];
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
 });
-const monthFormatter = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "Australia/Sydney" });
-
-const eventDateFormatter = new Intl.DateTimeFormat("en-AU", {
-  dateStyle: "short",
-  timeStyle: "short",
-  timeZone: "Australia/Sydney",
-});
-const eventTimeFormatter = new Intl.DateTimeFormat("en-AU", {
-  timeStyle: "short",
-  timeZone: "Australia/Sydney",
-});
-
-function formatEventDate(value: string) {
-  return eventDateFormatter.format(new Date(value));
-}
-
-function formatEventTime(value: string) {
-  return eventTimeFormatter.format(new Date(value));
-}
-
-function calendarDateKey(value: string | Date) {
-  if (typeof value === "string") {
-    // The event date is already encoded in the first ten characters of the
-    // database ISO value. Do not convert it through the browser timezone: a
-    // Sydney event can otherwise move from the 23rd to the 24th.
-    return value.slice(0, 10);
-  }
-
-  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
-}
-
 // text-base (16px) stops iOS Safari zooming the page when a field is focused
 const fieldClass =
   "block h-11 w-full min-w-0 max-w-full rounded-xl border bg-white px-3 text-base";
@@ -128,18 +89,6 @@ export default function ScheduleCalendar({
   waitingConfirmations: ScheduleEvent[];
   unavailability: ScheduleUnavailability[];
 }) {
-  const currentDate = new Date();
-  const firstEventDate = events.length
-    ? new Date(
-        Math.min(
-          ...events.map((event) => new Date(event.starts_at).getTime()),
-        ),
-      )
-    : currentDate;
-  const [month, setMonth] = useState(
-    new Date(firstEventDate.getFullYear(), firstEventDate.getMonth(), 1),
-  );
-  const [calendarView, setCalendarView] = useState<"month" | "week">("month");
   const [isOpen, setIsOpen] = useState(false);
   const [message, setMessage] = useState("");
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(
@@ -157,36 +106,6 @@ export default function ScheduleCalendar({
   const [selectedDate, setSelectedDate] = useState("");
   const [repeatWeeks, setRepeatWeeks] = useState("0");
   const [repeatIndefinitely, setRepeatIndefinitely] = useState(true);
-
-  const firstDay = new Date(month.getFullYear(), month.getMonth(), calendarView === "week" ? currentDate.getDate() : 1);
-  firstDay.setDate(firstDay.getDate() - firstDay.getDay());
-  const days = Array.from({ length: calendarView === "week" ? 7 : 42 }, (_, index) => {
-    const day = new Date(firstDay);
-    day.setDate(firstDay.getDate() + index);
-    return day;
-  });
-
-  function eventsFor(day: Date) {
-    const dayKey = calendarDateKey(day);
-    return events.filter(
-      (event) =>
-        calendarDateKey(event.starts_at) === dayKey,
-    );
-  }
-
-  function unavailableFor(day: Date) {
-    const dayStart = new Date(`${calendarDateKey(day)}T00:00:00+11:00`).getTime();
-    const dayEnd = dayStart + 86400000;
-    return unavailability.filter((entry) => new Date(entry.start_date).getTime() < dayEnd && new Date(entry.end_date).getTime() > dayStart);
-  }
-
-  function weekEventStyle(event: ScheduleEvent) {
-    const start = new Date(event.starts_at);
-    const end = new Date(event.ends_at);
-    const startMinutes = start.getHours() * 60 + start.getMinutes();
-    const duration = Math.max(45, (end.getTime() - start.getTime()) / 60000);
-    return { top: `${(startMinutes / 60) * 4}rem`, height: `${(duration / 60) * 4}rem` };
-  }
 
   async function submit(formData: FormData) {
     setEventSaving(true);
@@ -447,10 +366,10 @@ export default function ScheduleCalendar({
           <div className="grid grid-cols-2 gap-3">
             <button
               type="submit"
-              disabled={chargesLoading}
+              disabled={chargesLoading || editSaving}
               className="rounded-xl bg-[#ff6b35] py-3 text-sm font-semibold text-white disabled:opacity-50"
             >
-              Save
+              {editSaving ? <LoadingSpinner label="Saving..." /> : "Save"}
             </button>
             <button
               type="button"
@@ -485,27 +404,6 @@ export default function ScheduleCalendar({
     setDeleteAction(null);
   }
 
-  function openAddForDate(day: Date) {
-    const dayEvents = eventsFor(day);
-    if (dayEvents.length) {
-      const event = dayEvents[0];
-      setIsOpen(false);
-      setMessage("");
-      setSelectedEvent(event);
-      setIsEditing(isAdmin && event.status !== "completed");
-      if (isAdmin && event.status !== "completed") {
-        void startEdit(event);
-      }
-      return;
-    }
-    if (!isAdmin) return;
-    setMessage("");
-    setSelectedDate(
-      `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`,
-    );
-    setIsOpen(true);
-  }
-
   function openAddEvent() {
     if (!isAdmin) return;
     setMessage("");
@@ -536,11 +434,11 @@ export default function ScheduleCalendar({
           </p>
           {navigation.map((item) => (
             <NavigationLink
-              key={item}
-              href={item === "Overview" ? "/dashboard" : `/dashboard/${item === "Unavailable" ? "unavailability" : item.toLowerCase()}`}
-              active={item === "Schedule"}
+              key={item.href}
+              href={item.href}
+              active={item.label === "Schedule"}
             >
-              {item}
+              {item.label}
             </NavigationLink>
           ))}
         </nav>
@@ -554,12 +452,12 @@ export default function ScheduleCalendar({
           <nav className="mb-6 flex gap-2 overflow-x-auto pb-1 md:hidden">
             {navigation.map((item) => (
               <NavigationLink
-                key={item}
-                href={item === "Overview" ? "/dashboard" : `/dashboard/${item === "Unavailable" ? "unavailability" : item.toLowerCase()}`}
-                active={item === "Schedule"}
+                key={item.href}
+                href={item.href}
+                active={item.label === "Schedule"}
                 mobile
               >
-                {item}
+                {item.label}
               </NavigationLink>
             ))}
           </nav>
@@ -613,91 +511,6 @@ export default function ScheduleCalendar({
           )}
           <section className="mt-8 rounded-2xl border border-[#e8e1e9] bg-white p-3 shadow-sm sm:p-5">
             <FullScheduleCalendar events={events} unavailability={unavailability} onEvent={(event) => setSelectedEvent(event)} onDate={(date) => { if (isAdmin) { setSelectedDate(date); setIsOpen(true); } }} onUnavailable={(names) => setMessage(`Unavailable: ${names.join(", ")}`)} />
-          </section>
-          <section className="hidden mt-8 overflow-hidden rounded-2xl border border-[#e8e1e9] bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b px-5 py-4">
-              <h2 className="text-lg font-semibold text-[#17202a]">
-                {calendarView === "week" ? `${monthFormatter.format(days[0])} - ${monthFormatter.format(days[6])}` : monthFormatter.format(month)}
-              </h2>
-              <div className="flex rounded-lg bg-[#f5f2ee] p-1"><button type="button" onClick={() => setCalendarView("month")} className={`rounded-md px-2 py-1 text-xs font-semibold ${calendarView === "month" ? "bg-white shadow-sm" : "text-[#69727d]"}`}>Month</button><button type="button" onClick={() => setCalendarView("week")} className={`rounded-md px-2 py-1 text-xs font-semibold ${calendarView === "week" ? "bg-white shadow-sm" : "text-[#69727d]"}`}>Week</button></div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setMonth(
-                      new Date(month.getFullYear(), month.getMonth() - 1, 1),
-                    )
-                  }
-                  className="rounded-lg border px-3 py-2 text-sm"
-                >
-                  Previous
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMonth(new Date())}
-                  className="rounded-lg border px-3 py-2 text-sm"
-                >
-                  Today
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setMonth(
-                      new Date(month.getFullYear(), month.getMonth() + 1, 1),
-                    )
-                  }
-                  className="rounded-lg border px-3 py-2 text-sm"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-            {calendarView === "week" ? <div className="overflow-x-auto"><div className="grid min-w-[48rem] grid-cols-[4rem_repeat(7,minmax(6rem,1fr))] border-b"><div className="border-r" />{days.map((day) => <p key={day.toISOString()} className="border-r px-1 py-3 text-center text-xs font-semibold text-[#a0a5aa]">{day.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit" })}</p>)}<div className="relative border-r">{Array.from({ length: 24 }, (_, hour) => <div key={hour} className="h-16 border-b px-1 pt-1 text-[10px] text-[#a0a5aa]">{String(hour).padStart(2, "0")}:00</div>)}</div>{days.map((day) => <div key={day.toISOString()} className="relative border-r"><div className="absolute inset-0">{Array.from({ length: 24 }, (_, hour) => <div key={hour} className="h-16 border-b" />)}</div>{eventsFor(day).map((event) => <button key={event.id} type="button" onClick={() => setSelectedEvent(event)} style={weekEventStyle(event)} className="absolute left-1 right-1 z-10 overflow-hidden rounded-lg bg-[#fff1e9] px-2 py-1 text-left text-xs font-semibold text-[#a04420] shadow-sm">{event.title}</button>)}</div>)}</div></div> : <div className="grid grid-cols-7 border-b">
-              {weekdays.map((day) => (
-                <p
-                  key={day}
-                  className="border-r px-2 py-3 text-center text-xs font-semibold text-[#a0a5aa]"
-                >
-                  {day}
-                </p>
-              ))}
-            </div>}
-            <div className="grid grid-cols-7">
-              {days.map((day) => (
-                <div
-                  role="button"
-                  tabIndex={0}
-                  key={day.toISOString()}
-                  onClick={() => openAddForDate(day)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ")
-                      openAddForDate(day);
-                  }}
-                  className={`min-h-24 w-full cursor-pointer text-left border-b border-r p-2 ${day.getMonth() !== month.getMonth() ? "text-[#b6b9bc]" : ""} ${day.toDateString() === currentDate.toDateString() ? "bg-[#fff4ed]" : ""}`}
-                >
-                  <span
-                    className={`flex h-7 w-7 items-center justify-center rounded-full text-sm font-semibold ${day.toDateString() === currentDate.toDateString() ? "bg-[#ff6b35] text-white" : ""}`}
-                  >
-                    {day.getDate()}
-                  </span>
-                  {unavailableFor(day).length > 0 && <button type="button" onClick={(event) => { event.stopPropagation(); setMessage(`Unavailable: ${unavailableFor(day).map((entry) => entry.member_name).join(", ")}`); }} className="mt-1 flex h-7 w-7 items-center justify-center rounded-full bg-[#fce9e4] text-sm font-bold text-[#a04420]" aria-label="Show unavailable members">!</button>}
-                  {eventsFor(day).map((event) => (
-                    <button
-                      key={event.id}
-                      type="button"
-                      onClick={(clickEvent) => {
-                        clickEvent.stopPropagation();
-                        setSelectedEvent(event);
-                      }}
-                      className={`mt-1 flex min-h-8 w-full items-center gap-1.5 truncate rounded-lg px-2 py-1.5 text-left text-sm font-medium leading-5 hover:bg-[#ffe3d5] ${event.status === "completed" ? "bg-[#eefbf4] text-[#24734b]" : "bg-[#fff1e9] text-[#a04420]"}`}
-                    >
-                      <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
-                      {event.title}
-                    </button>
-                  ))}
-                </div>
-              ))}
-            </div>
           </section>
           {message && <p className="mt-4 text-sm text-[#24734b]">{message}</p>}
         </div>

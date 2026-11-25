@@ -128,17 +128,14 @@ export async function getTransactionsForMembership(membershipId: string): Promis
   const rows = (await response.json().catch(() => [])) as { id: string; member_name?: string | null; kind: string; amount_cents: number; note?: string | null; created_at: string; event_charge_id?: string | null }[];
   if (!response.ok) return [];
   const chargeIds = rows.map((row) => row.event_charge_id).filter((id): id is string => Boolean(id));
-  console.log("[finance] transaction event-charge lookup", { membershipId, rows: rows.length, chargeIds });
   const eventNames = new Map<string, string>();
   if (chargeIds.length) {
     const chargesResponse = await fetch(`${url}/rest/v1/event_charges?select=id,event_id&band_id=eq.${encodeURIComponent(own[0].band_id)}&id=in.(${chargeIds.map(encodeURIComponent).join(",")})`, { headers, cache: "no-store" });
     const charges = (await chargesResponse.json().catch(() => [])) as { id: string; event_id: string }[];
-    console.log("[finance] event_charges returned", { ok: chargesResponse.ok, charges });
     const eventIds = charges.map((charge) => charge.event_id);
     if (eventIds.length) {
       const eventsResponse = await fetch(`${url}/rest/v1/events?select=id,title&band_id=eq.${encodeURIComponent(own[0].band_id)}&id=in.(${eventIds.map(encodeURIComponent).join(",")})`, { headers, cache: "no-store" });
       const events = (await eventsResponse.json().catch(() => [])) as { id: string; title: string }[];
-      console.log("[finance] event names expected in UI", { eventIds, events });
       const titles = new Map(events.map((event) => [event.id, event.title]));
       charges.forEach((charge) => { const title = titles.get(charge.event_id); if (title) eventNames.set(charge.id, title); });
     }

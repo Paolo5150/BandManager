@@ -2,16 +2,7 @@ import type { ReactNode } from "react";
 import { logout } from "@/lib/backend/dashboard-data";
 import NavigationLink from "./navigation-link";
 import LogoutButton from "./logout-button";
-
-const navigation = [
-  { label: "Overview", href: "/dashboard" },
-  { label: "Members", href: "/dashboard/members" },
-  { label: "Songlist", href: "/dashboard/songlist" },
-  { label: "Sets", href: "/dashboard/sets" },
-  { label: "Schedule", href: "/dashboard/schedule" },
-  { label: "Unavailable", href: "/dashboard/unavailability" },
-  { label: "Finance", href: "/dashboard/finance" },
-];
+import { navigation } from "./navigation";
 
 function Logo() {
   return (

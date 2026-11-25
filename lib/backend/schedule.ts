@@ -1,30 +1,13 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { getAccessToken } from "@/lib/backend/session";
 import { revalidatePath } from "next/cache";
+import { sydneyDateTime } from "@/lib/sydney-date-time";
 
 export type ScheduleMember = { id: string; name: string };
 export type ScheduleEvent = { id: string; series_id?: string | null; type: string; title: string; starts_at: string; ends_at: string; location?: string | null; notes?: string | null; cost_cents?: number | null; status?: string };
 export type EventCharge = { id: string; membership_id?: string | null; member_name?: string | null; amount_cents: number };
 export type ScheduleUnavailability = { id: string; membership_id: string; start_date: string; end_date: string; member_name: string };
-
-function sydneyDateTime(date: string, time: string): Date {
-  const [year, month, day] = date.split("-").map(Number);
-  const [hours, minutes] = time.split(":").map(Number);
-  const guess = new Date(Date.UTC(year, month - 1, day, hours, minutes));
-  const parts = new Intl.DateTimeFormat("en-AU", {
-    timeZone: "Australia/Sydney",
-    timeZoneName: "shortOffset",
-    year: "numeric",
-  }).formatToParts(guess);
-  const offset = parts.find((part) => part.type === "timeZoneName")?.value ?? "GMT+11";
-  const match = offset.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
-  const offsetMinutes = match
-    ? (Number(match[2]) * 60 + Number(match[3] ?? 0)) * (match[1] === "-" ? -1 : 1)
-    : 660;
-  return new Date(guess.getTime() - offsetMinutes * 60_000);
-}
 
 export async function getEventCharges(eventId: string): Promise<EventCharge[]> {
   const context = await getContext();
@@ -150,8 +133,8 @@ export async function updateScheduleEvent(formData: FormData): Promise<{ error?:
   const date = String(formData.get("date") ?? "");
   const startsAt = String(formData.get("startsAt") ?? "");
   const endsAt = String(formData.get("endsAt") ?? "");
-  const start = sydneyDateTime(date, startsAt);
-  const end = sydneyDateTime(date, endsAt);
+  const start = sydneyDateTime(`${date}T${startsAt}`);
+  const end = sydneyDateTime(`${date}T${endsAt}`);
   const [startHours, startMinutes] = startsAt.split(":").map(Number);
   const [endHours, endMinutes] = endsAt.split(":").map(Number);
   const durationMinutes = endHours * 60 + endMinutes - (startHours * 60 + startMinutes);
@@ -257,8 +240,7 @@ export async function createScheduleEvent(formData: FormData): Promise<{ error?:
   const date = String(formData.get("date") ?? "");
   const startsAt = String(formData.get("startsAt") ?? "");
   const endsAt = String(formData.get("endsAt") ?? "");
-  const start = sydneyDateTime(date, startsAt);
-  const end = sydneyDateTime(date, endsAt);
+  const start = sydneyDateTime(`${date}T${startsAt}`);
   const [startHours, startMinutes] = startsAt.split(":").map(Number);
   const [endHours, endMinutes] = endsAt.split(":").map(Number);
   const durationMinutes = endHours * 60 + endMinutes - (startHours * 60 + startMinutes);
@@ -284,7 +266,7 @@ export async function createScheduleEvent(formData: FormData): Promise<{ error?:
   const events: Record<string, unknown>[] = [];
   for (let current = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate())); current <= until; current.setUTCDate(current.getUTCDate() + (repeatWeeks || 52) * 7)) {
     const currentDate = `${current.getUTCFullYear()}-${String(current.getUTCMonth() + 1).padStart(2, "0")}-${String(current.getUTCDate()).padStart(2, "0")}`;
-    const currentStart = sydneyDateTime(currentDate, startsAt);
+    const currentStart = sydneyDateTime(`${currentDate}T${startsAt}`);
     events.push({ band_id: context.bandId, series_id: seriesId, type, title, starts_at: currentStart.toISOString(), ends_at: new Date(currentStart.getTime() + durationMinutes * 60_000).toISOString(), location, notes, cost_cents: costCents || null, created_by: context.userId });
     if (!repeatWeeks) break;
   }
