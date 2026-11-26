@@ -24,6 +24,7 @@ export default function FullScheduleCalendar({ events = [], unavailability = [],
         height="auto"
         expandRows
         dayMaxEvents={2}
+        displayEventTime={false}
         slotDuration="01:00:00"
         events={calendarEvents}
         viewDidMount={(info) => {
