@@ -1,15 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useFormStatus } from "react-dom";
 import LoadingSpinner from "./loading-spinner";
 
 export default function LogoutButton({ className = "" }: { className?: string }) {
-  const [pending, setPending] = useState(false);
+  const { pending } = useFormStatus();
 
   return (
     <button
       type="submit"
-      onClick={() => setPending(true)}
       disabled={pending}
       aria-busy={pending || undefined}
       className={`${className} disabled:cursor-not-allowed disabled:opacity-60`}

@@ -5,13 +5,17 @@ import { revalidatePath } from "next/cache";
 import type { Song } from "@/lib/backend/songs";
 
 export type SetItem = { id: string; position: number; type: "song" | "break"; song_id?: string | null; break_minutes?: number | null; label?: string | null; song?: Song | null };
-export type BandSet = { id: string; name: string; notes?: string | null; created_at: string; items: SetItem[]; duration_seconds: number };
+export type BandSet = { id: string; name: string; notes?: string | null; created_at: string; last_modified?: string | null; modified_by?: string | null; modifier_name?: string | null; items: SetItem[]; duration_seconds: number };
 
 export async function getSets(): Promise<BandSet[]> {
   const c = await context(); if (!c) return [];
-  const setsResponse = await fetch(`${c.url}/rest/v1/sets?select=id,name,notes,created_at&band_id=eq.${encodeURIComponent(c.bandId)}&order=created_at.desc`, { headers: c.headers, cache: "no-store" });
+  const setsResponse = await fetch(`${c.url}/rest/v1/sets?select=id,name,notes,created_at,last_modified,modified_by&band_id=eq.${encodeURIComponent(c.bandId)}&order=created_at.desc`, { headers: c.headers, cache: "no-store" });
   const sets = (await setsResponse.json().catch(() => [])) as Omit<BandSet, "items" | "duration_seconds">[];
   if (!setsResponse.ok || !sets.length) return [];
+  const modifierIds = sets.map((set) => set.modified_by).filter((id): id is string => Boolean(id));
+  const modifiersResponse = modifierIds.length ? await fetch(`${c.url}/rest/v1/memberships?select=user_id,display_name&band_id=eq.${encodeURIComponent(c.bandId)}&confirmed=eq.true&user_id=in.(${modifierIds.map(encodeURIComponent).join(",")})`, { headers: c.headers, cache: "no-store" }) : null;
+  const modifiers = ((await modifiersResponse?.json().catch(() => [])) ?? []) as { user_id: string; display_name?: string | null }[];
+  const modifierNames = new Map(modifiers.map((modifier) => [modifier.user_id, modifier.display_name || "Band member"]));
   const itemsResponse = await fetch(`${c.url}/rest/v1/set_items?select=id,set_id,position,type,song_id,break_minutes,label&band_id=eq.${encodeURIComponent(c.bandId)}&order=position.asc`, { headers: c.headers, cache: "no-store" });
   const items = ((await itemsResponse.json().catch(() => [])) ?? []) as (SetItem & { set_id: string })[];
   const songIds = items.map((item) => item.song_id).filter((id): id is string => Boolean(id));
@@ -29,7 +33,7 @@ export async function getSets(): Promise<BandSet[]> {
       song: item.song_id ? songById.get(item.song_id) ?? null : null,
     }));
     const duration_seconds = setItems.reduce((total, item) => total + (item.type === "break" ? (item.break_minutes ?? 0) * 60 : item.song?.duration_seconds ?? 0), 0);
-    return { ...set, items: setItems, duration_seconds };
+    return { ...set, modifier_name: set.modified_by ? modifierNames.get(set.modified_by) ?? "Band member" : null, items: setItems, duration_seconds };
   });
 }
 
@@ -39,7 +43,7 @@ export async function createSet(formData: FormData): Promise<{ error?: string }>
   if (!name) return { error: "Enter a set name." };
   const rawItems = String(formData.get("items") ?? "[]");
   const items = JSON.parse(rawItems) as { type: "song" | "break"; song_id?: string; break_minutes?: number; label?: string }[];
-  const setResponse = await fetch(`${c.url}/rest/v1/sets`, { method: "POST", headers: { ...c.headers, "Content-Type": "application/json", Prefer: "return=representation" }, body: JSON.stringify({ band_id: c.bandId, name, notes }), cache: "no-store" });
+  const setResponse = await fetch(`${c.url}/rest/v1/sets`, { method: "POST", headers: { ...c.headers, "Content-Type": "application/json", Prefer: "return=representation" }, body: JSON.stringify({ band_id: c.bandId, name, notes, last_modified: new Date().toISOString(), modified_by: c.userId }), cache: "no-store" });
   const created = (await setResponse.json().catch(() => [])) as { id?: string }[];
   if (!setResponse.ok || !created[0]?.id) return { error: "Unable to create the set." };
   if (!items.length) { revalidatePath("/dashboard/sets"); return {}; }
@@ -66,6 +70,8 @@ export async function updateSetItems(formData: FormData): Promise<{ error?: stri
     const inserted = await fetch(`${c.url}/rest/v1/set_items`, { method: "POST", headers: { ...c.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(rows), cache: "no-store" });
     if (!inserted.ok) return { error: `Unable to save the set items. ${await inserted.text().catch(() => "")}`.trim() };
   }
+  const modified = await fetch(`${c.url}/rest/v1/sets?id=eq.${encodeURIComponent(setId)}&band_id=eq.${encodeURIComponent(c.bandId)}`, { method: "PATCH", headers: { ...c.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ last_modified: new Date().toISOString(), modified_by: c.userId }), cache: "no-store" });
+  if (!modified.ok) return { error: "The set items were saved, but its modification details could not be recorded." };
   revalidatePath("/dashboard/sets"); return {};
 }
 

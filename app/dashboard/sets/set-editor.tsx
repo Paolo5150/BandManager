@@ -33,7 +33,7 @@ export default function SetEditor({ set, songs, onClose }: { set: BandSet; songs
   function sectionDuration(start: number, end: number) { return items.slice(start, end).reduce((total, item) => total + (item.type === "song" ? songs.find((song) => song.id === item.song_id)?.duration_seconds ?? 0 : 0), 0); }
   function sectionLabel(seconds: number) { return `${Math.floor(seconds / 60)} min ${seconds % 60} sec`; }
   function sectionStart(index: number) { for (let cursor = index - 1; cursor >= 0; cursor -= 1) if (items[cursor]?.type === "break") return cursor + 1; return 0; }
-  async function save() { if (saving) return; setSaving(true); setError(""); try { const data = new FormData(); data.set("setId", set.id); data.set("items", JSON.stringify(items)); const result = await updateSetItems(data); if (result.error) setError(result.error); else onClose(); } finally { setSaving(false); } }
+  async function save() { if (saving) return; setSaving(true); setError(""); try { const data = new FormData(); data.set("setId", set.id); data.set("items", JSON.stringify(items)); const result = await updateSetItems(data); if (result.error) setError(result.error); else window.location.reload(); } finally { setSaving(false); } }
   return (
     <section className="mt-4 rounded-2xl border border-[#e8e1e9] bg-white p-2 shadow-sm sm:mt-6 sm:p-5">
       <div className="flex items-center justify-between gap-4 px-1 sm:px-0">

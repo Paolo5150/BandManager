@@ -12,9 +12,10 @@ type LoginResult = {
 };
 
 export async function login(
-  phone: string,
-  password: string,
+  formData: FormData,
 ): Promise<LoginResult> {
+  const phone = String(formData.get("phone") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
   const normalizedPhone = normalizePhoneNumber(phone);
   if (!normalizedPhone) {
     return { error: "Enter a valid Australian mobile number, for example 0412 345 678." };

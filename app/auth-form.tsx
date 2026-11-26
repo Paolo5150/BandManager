@@ -38,8 +38,7 @@ export default function AuthForm({ inviteBandId: initialInviteBandId, invitedBan
             password: String(formData.get("password") ?? ""),
           })
         : await login(
-            String(formData.get("phone") ?? "").trim(),
-            String(formData.get("password") ?? ""),
+            formData,
           );
 
       if (result.error) {
