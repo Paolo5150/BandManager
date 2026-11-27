@@ -262,11 +262,12 @@ export async function createScheduleEvent(formData: FormData): Promise<{ error?:
   const repeatUntil = String(formData.get("repeatUntil") ?? "");
   const location = String(formData.get("location") ?? "").trim() || null;
   const notes = String(formData.get("notes") ?? "").trim() || null;
-  const hasFinanceFields = formData.has("costCents") || Array.from(formData.keys()).some((key) => key.startsWith("charge_"));
+  const hasCost = formData.get("hasCost") === "true";
+  const hasFinanceFields = hasCost && (formData.has("costCents") || Array.from(formData.keys()).some((key) => key.startsWith("charge_")));
   if (!context.isAdmin && hasFinanceFields) return { error: "Only admins can add event finance details." };
-  const costCents = Math.round(Math.max(0, Number(formData.get("costCents") ?? "0") || 0) * 100);
-  const chargeRows = Array.from(formData.entries()).filter(([key]) => key.startsWith("charge_")).map(([key, value]) => ({ membership_id: key.slice(7), amount_cents: Math.round(Math.max(0, Number(value) || 0) * 100) }));
-  if (chargeRows.reduce((sum, row) => sum + row.amount_cents, 0) !== costCents) return { error: "Member charges must add up exactly to the event cost." };
+  const costCents = hasCost ? Math.round(Math.max(0, Number(formData.get("costCents") ?? "0") || 0) * 100) : 0;
+  const chargeRows = hasCost ? Array.from(formData.entries()).filter(([key]) => key.startsWith("charge_")).map(([key, value]) => ({ membership_id: key.slice(7), amount_cents: Math.round(Math.max(0, Number(value) || 0) * 100) })) : [];
+  if (hasCost && chargeRows.reduce((sum, row) => sum + row.amount_cents, 0) !== costCents) return { error: "Member charges must add up exactly to the event cost." };
   const headers = { ...context.headers, "Content-Type": "application/json", Prefer: "return=representation" };
   let seriesId: string | null = null;
   if ([1, 2, 3].includes(repeatWeeks)) {

@@ -98,6 +98,8 @@ export default function ScheduleCalendar({
   const [isEditing, setIsEditing] = useState(false);
   // membership_id -> amount in dollars (as typed)
   const [chargeInputs, setChargeInputs] = useState<Record<string, string>>({});
+  const [addChargeInputs, setAddChargeInputs] = useState<Record<string, string>>({});
+  const [addCostInput, setAddCostInput] = useState("");
   const [chargesLoading, setChargesLoading] = useState(false);
   const [eventSaving, setEventSaving] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
@@ -106,20 +108,19 @@ export default function ScheduleCalendar({
   const [selectedDate, setSelectedDate] = useState("");
   const [repeatWeeks, setRepeatWeeks] = useState("0");
   const [repeatIndefinitely, setRepeatIndefinitely] = useState(true);
+  const [eventHasCost, setEventHasCost] = useState(false);
+  const addChargeTotalCents = members.reduce((sum, member) => sum + Math.round((Number(addChargeInputs[member.id]) || 0) * 100), 0);
+  const addExpectedCostCents = Math.round((Number(addCostInput) || 0) * 100);
+  const editChargeTotalCents = members.reduce((sum, member) => sum + Math.round((Number(chargeInputs[member.id]) || 0) * 100), 0);
+  const editExpectedCostCents = Math.round((Number(selectedEvent?.cost_cents) || 0) * 100);
 
   async function submit(formData: FormData) {
     setEventSaving(true);
     setMessage("");
-    const cost = Math.round(
-      (Number(formData.get("costCents") ?? 0) || 0) * 100,
-    );
-    const charges = Array.from(formData.entries())
-      .filter(([key]) => key.startsWith("charge_"))
-      .reduce(
-        (sum, [, value]) => sum + Math.round((Number(value) || 0) * 100),
-        0,
-      );
-    if (charges !== cost) {
+    const hasCost = formData.get("hasCost") === "true";
+    const cost = Math.round((Number(formData.get("costCents") ?? 0) || 0) * 100);
+    const charges = Array.from(formData.entries()).filter(([key]) => key.startsWith("charge_")).reduce((sum, [, value]) => sum + Math.round((Number(value) || 0) * 100), 0);
+    if (hasCost && charges !== cost) {
       setMessage(
         `Member charges must add up to the event cost. Current total: $${(charges / 100).toFixed(2)}.`,
       );
@@ -246,7 +247,7 @@ export default function ScheduleCalendar({
               </label>
             </div>
           )}
-          <label className="block text-sm font-medium text-[#303942]">
+                 <label className="block text-sm font-medium text-[#303942]">
             Type
             <select
               name="type"
@@ -311,6 +312,7 @@ export default function ScheduleCalendar({
                 ))}
               </div>
             )}
+            {!chargesLoading && <p className={`mt-4 text-sm font-semibold ${editChargeTotalCents === editExpectedCostCents ? "text-[#24734b]" : "text-[#a04420]"}`}>Current total: ${(editChargeTotalCents / 100).toFixed(2)} / ${(editExpectedCostCents / 100).toFixed(2)}</p>}
           </details>
           <PickerInput
             label="Date"
@@ -408,6 +410,9 @@ export default function ScheduleCalendar({
     if (!isAdmin) return;
     setMessage("");
     setSelectedDate("");
+    setEventHasCost(false);
+    setAddCostInput("");
+    setAddChargeInputs({});
     setIsOpen(true);
   }
 
@@ -655,6 +660,11 @@ export default function ScheduleCalendar({
             </label>
             {isAdmin && (
               <>
+                <label className="flex items-center gap-3 rounded-xl border border-[#e8e1e9] bg-white px-4 py-3 text-sm font-medium text-[#303942]">
+                  <input name="hasCost" type="checkbox" value="true" checked={eventHasCost} onChange={(event) => setEventHasCost(event.target.checked)} className="h-5 w-5 accent-[#ff6b35]" />
+                  This event has a cost
+                </label>
+                {eventHasCost && <div className="space-y-4">
                 <label className="block text-sm font-medium text-[#303942]">
                   Total cost ($)
                   <input
@@ -663,7 +673,8 @@ export default function ScheduleCalendar({
                     inputMode="decimal"
                     min="0"
                     step="0.01"
-                    placeholder="$0.00"
+                    value={addCostInput}
+                    onChange={(event) => setAddCostInput(event.target.value)}
                     className={`${fieldClass} mt-1.5`}
                   />
                 </label>
@@ -684,14 +695,17 @@ export default function ScheduleCalendar({
                           inputMode="decimal"
                           min="0"
                           step="0.01"
-                           defaultValue="0"
-                           placeholder="$0.00"
+                          value={addChargeInputs[member.id] ?? "0"}
+                          onChange={(event) => setAddChargeInputs((current) => ({ ...current, [member.id]: event.target.value }))}
+                          placeholder="$0.00"
                           className="h-10 w-full min-w-0 rounded-lg border px-3 text-base"
                         />
                       </label>
                     ))}
                   </div>
+                  <p className={`mt-4 text-sm font-semibold ${addChargeTotalCents === addExpectedCostCents ? "text-[#24734b]" : "text-[#a04420]"}`}>Current total: ${(addChargeTotalCents / 100).toFixed(2)} / ${(addExpectedCostCents / 100).toFixed(2)}</p>
                 </details>
+                </div>}
               </>
             )}
             <PickerInput
@@ -754,8 +768,10 @@ export default function ScheduleCalendar({
                     label="Repeat until"
                     icon="calendar"
                     name="repeatUntil"
-                    type="date"
-                    required
+                    step="0.01"
+                    value={addCostInput}
+                    onChange={(event) => setAddCostInput(event.target.value)}
+                    placeholder="$0.00"
                   />
                 )}
               </>
