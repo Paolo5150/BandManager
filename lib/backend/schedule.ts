@@ -7,7 +7,7 @@ import { formatEventDateTime, getSydneyDateTimeParts } from "@/lib/date-format";
 import { sendNotification } from "@/lib/notifications/send-notification";
 
 export type ScheduleMember = { id: string; name: string };
-export type ScheduleEvent = { id: string; series_id?: string | null; type: string; title: string; starts_at: string; ends_at: string; location?: string | null; notes?: string | null; cost_cents?: number | null; status?: string };
+export type ScheduleEvent = { id: string; series_id?: string | null; type: string; title: string; starts_at: string; ends_at: string; location?: string | null; notes?: string | null; cost_cents?: number | null; status?: string; added_by?: string | null; added_by_name?: string | null };
 export type EventCharge = { id: string; membership_id?: string | null; member_name?: string | null; amount_cents: number };
 export type ScheduleUnavailability = { id: string; membership_id: string; start_date: string; end_date: string; member_name: string };
 
@@ -84,16 +84,24 @@ async function getContext() {
   const user = (await auth.json().catch(() => null)) as { id?: string } | null;
   if (!auth.ok || !user?.id) return null;
   const headers = { apikey: key, Authorization: `Bearer ${key}` };
-  const membership = await fetch(`${url}/rest/v1/memberships?select=band_id,role&user_id=eq.${encodeURIComponent(user.id)}&confirmed=eq.true&limit=1`, { headers, cache: "no-store" });
-  const rows = (await membership.json().catch(() => null)) as { band_id?: string; role?: string }[] | null;
-  return rows?.[0]?.band_id ? { url, headers, userId: user.id, bandId: rows[0].band_id, isAdmin: rows[0].role === "admin" } : null;
+  const membership = await fetch(`${url}/rest/v1/memberships?select=id,band_id,role&user_id=eq.${encodeURIComponent(user.id)}&confirmed=eq.true&limit=1`, { headers, cache: "no-store" });
+  const rows = (await membership.json().catch(() => null)) as { id?: string; band_id?: string; role?: string }[] | null;
+  return rows?.[0]?.id && rows[0].band_id ? { url, headers, userId: user.id, membershipId: rows[0].id, bandId: rows[0].band_id, isAdmin: rows[0].role === "admin" } : null;
 }
 
 export async function getScheduleEvents(): Promise<ScheduleEvent[]> {
   const context = await getContext();
   if (!context) return [];
-  const response = await fetch(`${context.url}/rest/v1/events?select=id,series_id,type,title,starts_at,ends_at,location,notes,cost_cents,status&band_id=eq.${encodeURIComponent(context.bandId)}&order=starts_at.asc`, { headers: context.headers, cache: "no-store" });
-  return response.ok ? ((await response.json().catch(() => [])) as ScheduleEvent[]) : [];
+  const response = await fetch(`${context.url}/rest/v1/events?select=id,series_id,type,title,starts_at,ends_at,location,notes,cost_cents,status,added_by&band_id=eq.${encodeURIComponent(context.bandId)}&order=starts_at.asc`, { headers: context.headers, cache: "no-store" });
+  const events = (await response.json().catch(() => [])) as ScheduleEvent[];
+  if (!response.ok || !events.length) return [];
+  const memberIds = [...new Set(events.map((event) => event.added_by).filter((id): id is string => Boolean(id)))];
+  if (!memberIds.length) return events;
+  const membersResponse = await fetch(`${context.url}/rest/v1/memberships?select=id,display_name&band_id=eq.${encodeURIComponent(context.bandId)}&id=in.(${memberIds.map(encodeURIComponent).join(",")})`, { headers: context.headers, cache: "no-store" });
+  const members = (await membersResponse.json().catch(() => [])) as { id: string; display_name?: string | null }[];
+  if (!membersResponse.ok) return events;
+  const memberNames = new Map(members.map((member) => [member.id, member.display_name || "Band member"]));
+  return events.map((event) => ({ ...event, added_by_name: event.added_by ? memberNames.get(event.added_by) ?? "Band member" : null }));
 }
 
 export async function getScheduleUnavailability(): Promise<ScheduleUnavailability[]> {
@@ -296,12 +304,12 @@ export async function getWaitingConfirmations(): Promise<ScheduleEvent[]> {
   return response.ok ? ((await response.json().catch(() => [])) as ScheduleEvent[]) : [];
 }
 
-export async function confirmScheduleEvent(formData: FormData): Promise<{ error?: string }> {
+export async function confirmScheduleEvent(formData: FormData): Promise<{ error?: string; notificationWarning?: string }> {
   const context = await getContext();
   const eventId = String(formData.get("eventId") ?? "");
   if (!context?.isAdmin || !eventId) return { error: "Only admins can confirm events." };
   const eventResponse = await fetch(`${context.url}/rest/v1/events?select=status,cost_cents&id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}&limit=1`, { headers: context.headers, cache: "no-store" });
-  const eventRows = (await eventResponse.json().catch(() => [])) as { status?: string; cost_cents?: number | null }[];
+  const eventRows = (await eventResponse.json().catch(() => [])) as { status?: string; cost_cents?: number | null; title?: string }[];
   if (!eventResponse.ok || !eventRows[0]) return { error: "Event not found." };
   if (eventRows[0].status === "completed") return { error: "This event has already been confirmed." };
   const chargesResponse = await fetch(`${context.url}/rest/v1/event_charges?select=id,membership_id,member_name,amount_cents&event_id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}`, { headers: context.headers, cache: "no-store" });
@@ -312,20 +320,51 @@ export async function confirmScheduleEvent(formData: FormData): Promise<{ error?
   if (totalCharges !== Math.round(Number(eventRows[0].cost_cents ?? 0))) return { error: "Member charges must add up exactly to the event cost." };
   const updateResponse = await fetch(`${context.url}/rest/v1/events?id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}&status=eq.scheduled`, { method: "PATCH", headers: { ...context.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ status: "completed" }), cache: "no-store" });
   if (!updateResponse.ok) return { error: "Unable to complete the event." };
+  let chargedMembershipIds: string[] = [];
   if (charges.length) {
     const chargeIds = submittedCharges.map((charge) => charge.id);
     const existingResponse = await fetch(`${context.url}/rest/v1/member_ledger?select=event_charge_id&band_id=eq.${encodeURIComponent(context.bandId)}&event_charge_id=in.(${chargeIds.map(encodeURIComponent).join(",")})`, { headers: context.headers, cache: "no-store" });
     const existing = (await existingResponse.json().catch(() => [])) as { event_charge_id?: string | null }[];
     if (!existingResponse.ok) return { error: "Unable to check existing member charges." };
     const existingIds = new Set(existing.map((entry) => entry.event_charge_id).filter((id): id is string => Boolean(id)));
-    const ledgerRows = submittedCharges.filter((charge) => charge.membership_id && charge.amount_cents > 0 && !existingIds.has(charge.id)).map((charge) => ({ band_id: context.bandId, membership_id: charge.membership_id, member_name: charge.member_name, kind: "charge", amount_cents: -Math.abs(charge.amount_cents), event_charge_id: charge.id, created_by: context.userId }));
+    const ledgerRows = submittedCharges.filter((charge): charge is typeof charge & { membership_id: string } => Boolean(charge.membership_id) && charge.amount_cents > 0 && !existingIds.has(charge.id)).map((charge) => ({ band_id: context.bandId, membership_id: charge.membership_id, member_name: charge.member_name, kind: "charge", amount_cents: -Math.abs(charge.amount_cents), event_charge_id: charge.id, created_by: context.userId }));
+    chargedMembershipIds = [...new Set(ledgerRows.map((row) => row.membership_id))];
     if (!ledgerRows.length) { revalidatePath("/dashboard/schedule"); revalidatePath("/dashboard/finance"); return {}; }
     const ledgerResponse = await fetch(`${context.url}/rest/v1/member_ledger`, { method: "POST", headers: { ...context.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(ledgerRows), cache: "no-store" });
     if (!ledgerResponse.ok) return { error: "Event completed, but member ledger entries could not be created." };
   }
+  let notificationWarning: string | undefined;
+  if (chargedMembershipIds.length) {
+    try {
+      const balanceResponse = await fetch(`${context.url}/rest/v1/member_balances?select=membership_id,balance_cents&band_id=eq.${encodeURIComponent(context.bandId)}&membership_id=in.(${chargedMembershipIds.map(encodeURIComponent).join(",")})`, { headers: context.headers, cache: "no-store" });
+      const balances = (await balanceResponse.json().catch(() => [])) as { membership_id: string; balance_cents?: number | string | null }[];
+      if (!balanceResponse.ok) throw new Error("Unable to read member balances after charging.");
+      const membersBelowZero = balances.filter((row) => Number(row.balance_cents ?? 0) < 0);
+      const results = await Promise.all(membersBelowZero.map(async (member) => {
+        const balance = Number(member.balance_cents ?? 0);
+        try {
+          return await sendNotification({
+            recipientMembershipIds: [member.membership_id],
+            notification: {
+              title: "Your band balance is below zero",
+              body: `Your balance is now $${(balance / 100).toFixed(2)} after the charge for ${eventRows[0]?.title || "a confirmed event"}. Add funds to bring your balance back above zero.`,
+              url: "/dashboard/finance",
+            },
+          });
+        } catch {
+          return { sent: 0, failed: 1, expired: 0 };
+        }
+      }));
+      const sentCount = results.reduce((total, result) => total + result.sent, 0);
+      const failures = results.reduce((total, result) => total + result.failed, 0);
+      if (failures) notificationWarning = sentCount ? "Some members with negative balances could not be notified." : "The event was confirmed and charged, but negative-balance notifications could not be delivered.";
+    } catch {
+      notificationWarning = "The event was confirmed and charged, but member balances could not be checked for notifications.";
+    }
+  }
   revalidatePath("/dashboard/schedule");
   revalidatePath("/dashboard/finance");
-  return {};
+  return notificationWarning ? { notificationWarning } : {};
 }
 
 export async function createScheduleEvent(formData: FormData): Promise<{ error?: string; notificationSent?: boolean; notificationWarning?: string }> {
@@ -355,9 +394,14 @@ export async function createScheduleEvent(formData: FormData): Promise<{ error?:
   const headers = { ...context.headers, "Content-Type": "application/json", Prefer: "return=representation" };
   let seriesId: string | null = null;
   if ([1, 2, 3].includes(repeatWeeks)) {
-    const response = await fetch(`${context.url}/rest/v1/event_series`, { method: "POST", headers, body: JSON.stringify({ band_id: context.bandId, title, start_date: date, start_time: startsAt, duration_minutes: durationMinutes, interval_weeks: repeatWeeks, end_date: repeatUntil || null, location, notes, cost_cents: costCents, created_by: context.userId }), cache: "no-store" });
-    const series = (await response.json().catch(() => null)) as { id?: string }[] | null;
-    if (!response.ok || !series?.[0]?.id) return { error: "Unable to create the recurring event." };
+    let response: Response;
+    try {
+      response = await fetch(`${context.url}/rest/v1/event_series`, { method: "POST", headers, body: JSON.stringify({ band_id: context.bandId, title, start_date: date, start_time: startsAt, duration_minutes: durationMinutes, interval_weeks: repeatWeeks, end_date: repeatUntil || null, location, notes, cost_cents: costCents, created_by: context.userId }), cache: "no-store" });
+    } catch {
+      return { error: "Could not connect to the database while creating the recurring event. Please try again." };
+    }
+    const series = (await response.json().catch(() => null)) as { id?: string; message?: string; details?: string; hint?: string }[] | null;
+    if (!response.ok || !series?.[0]?.id) return { error: `Unable to create the recurring event${series?.[0]?.message ? `: ${series[0].message}` : ` (HTTP ${response.status})`}${series?.[0]?.details ? ` — ${series[0].details}` : ""}` };
     seriesId = series[0].id;
   }
   const until = repeatWeeks ? (repeatUntil ? new Date(`${repeatUntil}T23:59:59Z`) : new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() + 52 * 7))) : start;
@@ -365,12 +409,22 @@ export async function createScheduleEvent(formData: FormData): Promise<{ error?:
   for (let current = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate())); current <= until; current.setUTCDate(current.getUTCDate() + (repeatWeeks || 52) * 7)) {
     const currentDate = `${current.getUTCFullYear()}-${String(current.getUTCMonth() + 1).padStart(2, "0")}-${String(current.getUTCDate()).padStart(2, "0")}`;
     const currentStart = sydneyDateTime(`${currentDate}T${startsAt}`);
-    events.push({ band_id: context.bandId, series_id: seriesId, type, title, starts_at: currentStart.toISOString(), ends_at: new Date(currentStart.getTime() + durationMinutes * 60_000).toISOString(), location, notes, cost_cents: costCents || null, created_by: context.userId });
+    events.push({ band_id: context.bandId, series_id: seriesId, type, title, starts_at: currentStart.toISOString(), ends_at: new Date(currentStart.getTime() + durationMinutes * 60_000).toISOString(), location, notes, cost_cents: costCents || null, created_by: context.userId, added_by: context.membershipId });
     if (!repeatWeeks) break;
   }
-  const response = await fetch(`${context.url}/rest/v1/events`, { method: "POST", headers, body: JSON.stringify(events), cache: "no-store" });
-  const createdEvents = (await response.json().catch(() => [])) as { id: string }[];
-  if (!response.ok || !createdEvents.length) return { error: "Unable to save the event." };
+  let response: Response;
+  try {
+    response = await fetch(`${context.url}/rest/v1/events`, { method: "POST", headers, body: JSON.stringify(events), cache: "no-store" });
+  } catch {
+    return { error: "Could not connect to the database while saving the event. Please try again." };
+  }
+  const eventBody = (await response.json().catch(() => null)) as { id?: string; message?: string; details?: string; hint?: string }[] | { message?: string; details?: string; hint?: string } | null;
+  const createdEvents = Array.isArray(eventBody) ? eventBody as { id?: string }[] : [];
+  if (!response.ok || !createdEvents.length) {
+    const errorBody = Array.isArray(eventBody) ? eventBody[0] : eventBody;
+    const details = [errorBody?.message, errorBody?.details, errorBody?.hint].filter((part): part is string => Boolean(part)).join(" — ");
+    return { error: `Unable to save the event${details ? `: ${details}` : ` (HTTP ${response.status})`}` };
+  }
   if (chargeRows.length) {
     const charges = createdEvents.flatMap((event) => chargeRows.map((charge) => ({ band_id: context.bandId, event_id: event.id, membership_id: charge.membership_id, amount_cents: charge.amount_cents })));
     const chargesResponse = await fetch(`${context.url}/rest/v1/event_charges`, { method: "POST", headers, body: JSON.stringify(charges), cache: "no-store" });

@@ -4,7 +4,6 @@ import NavigationLink from "./navigation-link";
 import LogoutButton from "./logout-button";
 import { navigation } from "./navigation";
 import InstallPrompt from "../install-prompt";
-import NotificationControls from "./notification-controls";
 
 function Logo() {
   return (
@@ -55,7 +54,6 @@ export default function DashboardShell({ active, wide = false, children }: { act
         <main className="min-w-0 flex-1 px-4 py-6 sm:px-8 sm:py-8 lg:px-12">
           <div className={`mx-auto w-full min-w-0 ${wide ? "max-w-6xl" : "max-w-5xl"}`}>
             {children}
-            <NotificationControls vapidPublicKey={process.env.VAPID_PUBLIC_KEY ?? ""} />
           </div>
         </main>
       </div>

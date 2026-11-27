@@ -1,6 +1,7 @@
 "use server";
 
 import { normalizePhoneNumber } from "@/lib/phone";
+import { sendInvitationApprovalReminder } from "@/lib/notifications/send-notification";
 
 type CreateBandResult = { error?: string; bandId?: string };
 
@@ -43,7 +44,7 @@ export async function createBand(
     : null;
   const band = existingBandId ? { id: existingBandId } : bands?.find((item) => item.id);
 
-  if ((!existingBandId && !bandResponse?.ok) || !band) {
+  if ((!existingBandId && !bandResponse?.ok) || !band?.id) {
     return {
       error: bandError?.message ?? bandError?.hint ?? "Unable to create the band.",
     };
@@ -62,13 +63,14 @@ export async function createBand(
   }
 
   const membershipRole = existingBandId ? "member" : "admin";
+  const targetBandId = band.id;
 
   const membershipResponse = await fetch(`${supabaseUrl}/rest/v1/memberships`, {
     method: "POST",
-    headers,
+    headers: { ...headers, Prefer: "return=representation" },
     body: JSON.stringify({
       user_id: userId,
-      band_id: band.id,
+      band_id: targetBandId,
       role: membershipRole,
       display_name: displayName,
       phone: normalizedPhone,
@@ -95,5 +97,17 @@ export async function createBand(
     };
   }
 
-  return { bandId: band.id };
+  if (existingBandId) {
+    const createdMemberships = (await membershipResponse.json().catch(() => [])) as { id?: string }[];
+    const membershipId = createdMemberships[0]?.id;
+    if (membershipId) {
+      try {
+        await sendInvitationApprovalReminder({ bandId: targetBandId, membershipId, memberName: displayName });
+      } catch (error) {
+        console.error("Could not send invitation approval reminder", error);
+      }
+    }
+  }
+
+  return { bandId: targetBandId };
 }

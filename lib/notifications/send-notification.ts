@@ -2,6 +2,7 @@ import "server-only";
 
 import * as webPush from "web-push";
 import { getBandContext } from "@/lib/backend/band-context";
+import { getAccessToken } from "@/lib/backend/session";
 
 export type PushNotificationPayload = {
   title: string;
@@ -52,7 +53,40 @@ export async function sendNotification(input: {
   if (!context) throw new Error("You must be a confirmed band member to send notifications.");
   if (!context.isAdmin) throw new Error("Only band admins can send notifications.");
 
-  const recipientIds = [...new Set(input.recipientMembershipIds.filter((id) => typeof id === "string" && id.length > 0))];
+  return sendToBandMembers(context, input.recipientMembershipIds, input.notification);
+}
+
+/** Send an approval reminder only for the caller's newly-created pending invitation membership. */
+export async function sendInvitationApprovalReminder(input: {
+  bandId: string;
+  membershipId: string;
+  memberName: string;
+}): Promise<SendNotificationResult> {
+  const token = await getAccessToken();
+  const url = process.env.SUPABASE_URL;
+  const publishable = process.env.SUPABASE_PUBLISHABLE_KEY;
+  const secret = process.env.SUPABASE_SECRET_KEY;
+  if (!token || !url || !publishable || !secret) throw new Error("A valid signed-in session is required.");
+  const authResponse = await fetch(`${url}/auth/v1/user`, { headers: { apikey: publishable, Authorization: `Bearer ${token}` }, cache: "no-store" });
+  const authUser = (await authResponse.json().catch(() => null)) as { id?: string } | null;
+  if (!authResponse.ok || !authUser?.id) throw new Error("Unable to verify the signed-in user.");
+  const headers = { apikey: secret, Authorization: `Bearer ${secret}` };
+  const membershipResponse = await fetch(`${url}/rest/v1/memberships?select=id,user_id,band_id,confirmed&id=eq.${encodeURIComponent(input.membershipId)}&band_id=eq.${encodeURIComponent(input.bandId)}&user_id=eq.${encodeURIComponent(authUser.id)}&confirmed=eq.false&limit=1`, { headers, cache: "no-store" });
+  const pendingRows = (await membershipResponse.json().catch(() => [])) as { id: string }[];
+  if (!membershipResponse.ok || !pendingRows[0]?.id) throw new Error("The invitation membership is not a pending membership for the signed-in user.");
+  const adminsResponse = await fetch(`${url}/rest/v1/memberships?select=id&band_id=eq.${encodeURIComponent(input.bandId)}&confirmed=eq.true&role=eq.admin`, { headers, cache: "no-store" });
+  const admins = (await adminsResponse.json().catch(() => [])) as { id: string }[];
+  if (!adminsResponse.ok) throw new Error("Unable to load band admins for the approval reminder.");
+  return sendToBandMembers({ url, headers, bandId: input.bandId }, admins.map((admin) => admin.id), {
+    title: `Reminder: ${input.memberName.trim() || "A new member"} is waiting for approval`,
+    body: `${input.memberName.trim() || "A new member"} has requested to join your band and is waiting for an admin to approve their membership.`,
+    url: "/dashboard/members",
+  });
+}
+
+async function sendToBandMembers(context: { url: string; headers: Record<string, string>; bandId: string }, requestedRecipientIds: string[], notification: PushNotificationPayload): Promise<SendNotificationResult> {
+
+  const recipientIds = [...new Set(requestedRecipientIds.filter((id) => typeof id === "string" && id.length > 0))];
   if (!recipientIds.length) return { sent: 0, failed: 0, expired: 0 };
   if (recipientIds.length > 500) throw new Error("A notification can target at most 500 members at a time.");
 
@@ -68,7 +102,7 @@ export async function sendNotification(input: {
   if (!subscriptions.length) return { sent: 0, failed: 0, expired: 0 };
 
   configureVapid();
-  const payload = JSON.stringify({ title: input.notification.title.slice(0, 120), body: input.notification.body.slice(0, 500), url: notificationUrl(input.notification.url) });
+  const payload = JSON.stringify({ title: notification.title.slice(0, 120), body: notification.body.slice(0, 500), url: notificationUrl(notification.url) });
   const outcomes = await Promise.all(subscriptions.map(async (entry) => {
     try {
       await webPush.sendNotification(entry.subscription, payload);

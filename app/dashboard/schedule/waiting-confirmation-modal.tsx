@@ -5,14 +5,53 @@ import { confirmScheduleEvent, getEventCharges, type EventCharge, type ScheduleE
 import { formatDateTime } from "@/lib/date-format";
 import LoadingSpinner from "../loading-spinner";
 
-export default function WaitingConfirmationModal({ event, onClose }: { event: ScheduleEvent; onClose: () => void }) {
+export default function WaitingConfirmationModal({ event, onClose }: { event: ScheduleEvent; onClose: (notificationWarning?: string) => void }) {
   const [charges, setCharges] = useState<EventCharge[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  useEffect(() => { getEventCharges(event.id).then(setCharges).finally(() => setLoading(false)); }, [event.id]);
-  async function confirm() { if (saving) return; const total = charges.reduce((sum, charge) => sum + charge.amount_cents, 0); const cost = Math.round(Number(event.cost_cents ?? 0)); if (total !== cost) { setError(`Member charges must add up to the total cost. Current total: $${(total / 100).toFixed(2)}.`); return; } setSaving(true); setError(""); const data = new FormData(); data.set("eventId", event.id); charges.forEach((charge) => data.set(`charge_${charge.id}`, String(charge.amount_cents / 100))); const result = await confirmScheduleEvent(data); if (result.error) { setError(result.error); setSaving(false); } else onClose(); }
+
+  useEffect(() => {
+    getEventCharges(event.id).then(setCharges).catch(() => setError("Unable to load event charges.")).finally(() => setLoading(false));
+  }, [event.id]);
+
+  async function confirm() {
+    if (saving) return;
+    const total = charges.reduce((sum, charge) => sum + charge.amount_cents, 0);
+    const cost = Math.round(Number(event.cost_cents ?? 0));
+    if (total !== cost) {
+      setError(`Member charges must add up to the total cost. Current total: $${(total / 100).toFixed(2)}.`);
+      return;
+    }
+    setSaving(true);
+    setError("");
+    const data = new FormData();
+    data.set("eventId", event.id);
+    charges.forEach((charge) => data.set(`charge_${charge.id}`, String(charge.amount_cents / 100)));
+    try {
+      const result = await confirmScheduleEvent(data);
+      if (result.error) {
+        setError(result.error);
+        setSaving(false);
+        return;
+      }
+      onClose(result.notificationWarning);
+    } catch {
+      setError("Unable to confirm the event. Please try again.");
+      setSaving(false);
+    }
+  }
+
   const totalCharges = charges.reduce((sum, charge) => sum + charge.amount_cents, 0);
   const totalCost = Math.round(Number(event.cost_cents ?? 0));
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-5"><div className="w-full max-w-lg rounded-3xl bg-white p-7 shadow-2xl"><div className="flex items-center justify-between"><div><p className="text-xs font-semibold uppercase text-[#ff6b35]">Waiting confirmation</p><h2 className="mt-2 text-2xl font-semibold">{event.title}</h2></div><button type="button" onClick={onClose} disabled={saving} className="text-2xl disabled:opacity-50">x</button></div><div className="mt-5 space-y-2 text-sm"><p><b>When:</b> {formatDateTime(event.starts_at)} - {formatDateTime(event.ends_at)}</p>{event.location && <p><b>Location:</b> {event.location}</p>}<p><b>Total cost:</b> ${(totalCost / 100).toFixed(2)}</p>{event.notes && <p className="whitespace-pre-wrap"><b>Notes:</b> {event.notes}</p>}</div><div className="mt-6 border-t pt-4"><h3 className="font-semibold">Member charges</h3>{loading ? <p className="mt-3 text-sm text-[#69727d]">Loading charges...</p> : charges.length ? <div className="mt-3 space-y-3">{charges.map((charge) => <label key={charge.id} className="flex items-center justify-between gap-3 text-sm"><span>{charge.member_name || "Member"}</span><input type="number" min="0" step="0.01" value={(charge.amount_cents / 100).toFixed(2)} disabled={saving} onChange={(e) => setCharges((rows) => rows.map((row) => row.id === charge.id ? { ...row, amount_cents: Math.round(Number(e.target.value || 0) * 100) } : row))} className="h-10 w-28 rounded-lg border px-2" /></label>)}</div> : <p className="mt-3 text-sm text-[#69727d]">No individual charges.</p>}<p className={`mt-4 text-sm font-semibold ${totalCharges === totalCost ? "text-[#24734b]" : "text-[#a04420]"}`}>Charges total: ${(totalCharges / 100).toFixed(2)} / ${(totalCost / 100).toFixed(2)}</p></div>{error && <p className="mt-4 text-sm text-[#a04420]">{error}</p>}<button type="button" disabled={loading || saving || totalCharges !== totalCost} onClick={() => void confirm()} className="mt-7 flex h-11 w-full items-center justify-center rounded-xl bg-[#ff6b35] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{saving ? <LoadingSpinner label="Confirming..." /> : "Confirm event"}</button></div></div>;
+
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-5">
+    <div className="w-full max-w-lg rounded-3xl bg-white p-7 shadow-2xl">
+      <div className="flex items-center justify-between"><div><p className="text-xs font-semibold uppercase text-[#ff6b35]">Waiting confirmation</p><h2 className="mt-2 text-2xl font-semibold">{event.title}</h2></div><button type="button" onClick={() => onClose()} disabled={saving} aria-label="Close confirmation" className="text-2xl disabled:opacity-50">×</button></div>
+      <div className="mt-5 space-y-2 text-sm"><p><b>When:</b> {formatDateTime(event.starts_at)} – {formatDateTime(event.ends_at)}</p>{event.location && <p><b>Location:</b> {event.location}</p>}<p><b>Total cost:</b> ${(totalCost / 100).toFixed(2)}</p>{event.notes && <p className="whitespace-pre-wrap"><b>Notes:</b> {event.notes}</p>}</div>
+      <div className="mt-6 border-t pt-4"><h3 className="font-semibold">Member charges</h3>{loading ? <p className="mt-3 text-sm text-[#69727d]">Loading charges...</p> : charges.length ? <div className="mt-3 space-y-3">{charges.map((charge) => <label key={charge.id} className="flex items-center justify-between gap-3 text-sm"><span>{charge.member_name || "Member"}</span><input type="number" min="0" step="0.01" value={(charge.amount_cents / 100).toFixed(2)} disabled={saving} onChange={(e) => setCharges((rows) => rows.map((row) => row.id === charge.id ? { ...row, amount_cents: Math.round(Number(e.target.value || 0) * 100) } : row))} className="h-10 w-28 rounded-lg border px-2" /></label>)}</div> : <p className="mt-3 text-sm text-[#69727d]">No individual charges.</p>}<p className={`mt-4 text-sm font-semibold ${totalCharges === totalCost ? "text-[#24734b]" : "text-[#a04420]"}`}>Charges total: ${(totalCharges / 100).toFixed(2)} / ${(totalCost / 100).toFixed(2)}</p></div>
+      {error && <p role="alert" className="mt-4 text-sm text-[#a04420]">{error}</p>}
+      <button type="button" disabled={loading || saving || totalCharges !== totalCost} onClick={() => void confirm()} className="mt-7 flex h-11 w-full items-center justify-center rounded-xl bg-[#ff6b35] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">{saving ? <LoadingSpinner label="Confirming..." /> : "Confirm event"}</button>
+    </div>
+  </div>;
 }

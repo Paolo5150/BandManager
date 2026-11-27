@@ -3,6 +3,7 @@ import { getDashboardData } from "@/lib/backend/dashboard-data";
 import { getUpcomingOverviewEvents, type ScheduleEvent } from "@/lib/backend/schedule";
 import DashboardShell from "./dashboard-shell";
 import PageHeader from "./page-header";
+import NotificationControls from "./notification-controls";
 import { formatDateTime } from "@/lib/date-format";
 
 export const instant = false;
@@ -31,6 +32,7 @@ export default async function DashboardPage() {
   return (
     <DashboardShell active="Overview">
       <PageHeader eyebrow={bandName} title={`Good to see you, ${userName}`} description="Here's what's coming up for your band." />
+      <NotificationControls vapidPublicKey={process.env.VAPID_PUBLIC_KEY ?? ""} />
       <div className="mt-6 grid gap-4 sm:mt-8 md:grid-cols-2">
         <EventCard event={next} label="Next event" />
         <EventCard event={nextGig} label="Next gig" />

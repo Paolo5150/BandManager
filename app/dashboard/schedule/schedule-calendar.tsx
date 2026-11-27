@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useState, type InputHTMLAttributes } from "react";
+import { useRef, useState, type InputHTMLAttributes } from "react";
 import {
   createScheduleEvent,
   getEventCharges,
@@ -93,6 +93,7 @@ export default function ScheduleCalendar({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [message, setMessage] = useState("");
+  const statusActionId = useRef(0);
   const [selectedEvent, setSelectedEvent] = useState<ScheduleEvent | null>(
     null,
   );
@@ -120,21 +121,20 @@ export default function ScheduleCalendar({
   const editExpectedCostCents = Math.round((Number(selectedEvent?.cost_cents) || 0) * 100);
 
   async function submit(formData: FormData) {
+    const actionId = ++statusActionId.current;
     setEventSaving(true);
     setMessage("");
     const hasCost = formData.get("hasCost") === "true";
     const cost = Math.round((Number(formData.get("costCents") ?? 0) || 0) * 100);
     const charges = Array.from(formData.entries()).filter(([key]) => key.startsWith("charge_")).reduce((sum, [, value]) => sum + Math.round((Number(value) || 0) * 100), 0);
     if (hasCost && charges !== cost) {
-      setMessage(
-        `Member charges must add up to the event cost. Current total: $${(charges / 100).toFixed(2)}.`,
-      );
+      if (actionId === statusActionId.current) setMessage(`Member charges must add up to the event cost. Current total: $${(charges / 100).toFixed(2)}.`);
       setEventSaving(false);
       return;
     }
     const result = await createScheduleEvent(formData);
-    if (result.error) setMessage(result.error);
-    else {
+    if (actionId === statusActionId.current && result.error) setMessage(result.error);
+    else if (actionId === statusActionId.current) {
       setMessage(result.notificationWarning ? `Event added. ${result.notificationWarning}` : result.notificationSent ? "Event added and band members notified." : "Event added.");
       setIsOpen(false);
     }
@@ -405,16 +405,18 @@ export default function ScheduleCalendar({
       !window.confirm(all ? "Delete the entire series?" : "Delete this event?")
     )
       return;
+    const actionId = ++statusActionId.current;
     setDeleteAction(all ? "series" : "event");
     const data = new FormData();
     data.set("eventId", selectedEvent.id);
     if (all && selectedEvent.series_id)
       data.set("seriesId", selectedEvent.series_id);
     const result = await deleteScheduleEvent(data);
-    if (result.error) setMessage(result.error);
-    else {
+    if (result.error) {
+      if (actionId === statusActionId.current) setMessage(result.error);
+    } else {
       setSelectedEvent(null);
-      setMessage(result.notificationWarning ? `Event deleted. ${result.notificationWarning}` : "Event deleted and band members reminded.");
+      if (actionId === statusActionId.current) setMessage(result.notificationWarning ? `Event deleted. ${result.notificationWarning}` : "Event deleted and band members reminded.");
     }
     setDeleteAction(null);
   }
@@ -431,6 +433,7 @@ export default function ScheduleCalendar({
 
   function openAddEvent() {
     if (!isAdmin) return;
+    statusActionId.current += 1;
     setMessage("");
     setSelectedDate("");
     setEventHasCost(false);
@@ -539,7 +542,7 @@ export default function ScheduleCalendar({
             </section>
           )}
           <section className="mt-8 rounded-2xl border border-[#e8e1e9] bg-white p-3 shadow-sm sm:p-5">
-            <FullScheduleCalendar events={events} unavailability={unavailability} onEvent={(event) => setSelectedEvent(event)} onDate={(date) => { if (isAdmin) { setSelectedDate(date); setIsOpen(true); } }} onUnavailable={(names) => setMessage(`Unavailable: ${names.join(", ")}`)} />
+            <FullScheduleCalendar events={events} unavailability={unavailability} onEvent={(event) => setSelectedEvent(event)} onDate={(date) => { if (isAdmin) { statusActionId.current += 1; setMessage(""); setSelectedDate(date); setIsOpen(true); } }} onUnavailable={(names) => setMessage(`Unavailable: ${names.join(", ")}`)} />
           </section>
           {message && <p className="mt-4 text-sm text-[#24734b]">{message}</p>}
         </div>
@@ -547,7 +550,7 @@ export default function ScheduleCalendar({
       {reviewEvent && (
         <WaitingConfirmationModal
           event={reviewEvent}
-          onClose={() => setReviewEvent(null)}
+          onClose={(warning) => { setReviewEvent(null); setMessage(warning ? `Event confirmed and charges applied. ${warning}` : "Event confirmed and charges applied."); }}
         />
       )}
       {selectedEvent && !isEditing && (
@@ -577,6 +580,7 @@ export default function ScheduleCalendar({
                 {formatEventDate(selectedEvent.starts_at)} &rarr;{" "}
                 {formatEventTime(selectedEvent.ends_at)}
               </p>
+              {selectedEvent.added_by_name && <p><b>Added by</b><br />{selectedEvent.added_by_name}</p>}
               {selectedEvent.location && (
                 <p>
                   <b>Location</b>
@@ -777,10 +781,8 @@ export default function ScheduleCalendar({
                     label="Repeat until"
                     icon="calendar"
                     name="repeatUntil"
-                    step="0.01"
-                    value={addCostInput}
-                    onChange={(event) => setAddCostInput(event.target.value)}
-                    placeholder="$0.00"
+                    type="date"
+                    required
                   />
                 )}
               </>
