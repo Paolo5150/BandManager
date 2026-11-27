@@ -2,11 +2,12 @@
 
 import { getAccessToken } from "@/lib/backend/session";
 import { revalidatePath } from "next/cache";
+import { sendMemberFinanceNotification } from "@/lib/notifications/send-notification";
 
 export type MemberBalance = { membershipId: string; name: string; balanceCents: number };
 export type LedgerTransaction = { id: string; memberName?: string | null; kind: string; amountCents: number; note?: string | null; createdAt: string; eventName?: string | null; eventDate?: string | null };
 
-export async function addFunds(formData: FormData): Promise<{ error?: string }> {
+export async function addFunds(formData: FormData): Promise<{ error?: string; notificationWarning?: string }> {
   const token = await getAccessToken();
   const url = process.env.SUPABASE_URL;
   const secret = process.env.SUPABASE_SECRET_KEY;
@@ -28,10 +29,17 @@ export async function addFunds(formData: FormData): Promise<{ error?: string }> 
   const response = await fetch(`${url}/rest/v1/member_ledger`, { method: "POST", headers: { ...headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ band_id: own[0].band_id, membership_id: membershipId, member_name: target[0].display_name, kind: "deposit", amount_cents: amountCents, note, created_by: user.id }), cache: "no-store" });
   if (!response.ok) return { error: "Unable to add funds." };
   revalidatePath("/dashboard/finance");
+  try {
+    const notification = await sendMemberFinanceNotification({ membershipId, notification: { title: "Funds added to your band balance", body: `$${(amountCents / 100).toFixed(2)} was added to your balance.${note ? ` Note: ${note}` : ""}`, url: "/dashboard/finance" } });
+    if (!notification.sent) return { notificationWarning: "Funds were added, but the member has no active push subscription." };
+    if (notification.failed) return { notificationWarning: "Funds were added, but some member devices could not be notified." };
+  } catch {
+    return { notificationWarning: "Funds were added, but the member could not be notified." };
+  }
   return {};
 }
 
-export async function addBalanceAdjustment(formData: FormData): Promise<{ error?: string }> {
+export async function addBalanceAdjustment(formData: FormData): Promise<{ error?: string; notificationWarning?: string }> {
   const token = await getAccessToken();
   const url = process.env.SUPABASE_URL;
   const secret = process.env.SUPABASE_SECRET_KEY;
@@ -53,6 +61,14 @@ export async function addBalanceAdjustment(formData: FormData): Promise<{ error?
   const response = await fetch(`${url}/rest/v1/member_ledger`, { method: "POST", headers: { ...headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ band_id: own[0].band_id, membership_id: membershipId, member_name: target[0].display_name, kind: "adjustment", amount_cents: amountCents, note, created_by: user.id }), cache: "no-store" });
   if (!response.ok) return { error: "Unable to save the balance adjustment." };
   revalidatePath("/dashboard/finance");
+  try {
+    const direction = amountCents > 0 ? "increased" : "decreased";
+    const notification = await sendMemberFinanceNotification({ membershipId, notification: { title: "Your band balance was adjusted", body: `Your balance was ${direction} by $${(Math.abs(amountCents) / 100).toFixed(2)}.${note ? ` Note: ${note}` : ""}`, url: "/dashboard/finance" } });
+    if (!notification.sent) return { notificationWarning: "The balance was adjusted, but the member has no active push subscription." };
+    if (notification.failed) return { notificationWarning: "The balance was adjusted, but some member devices could not be notified." };
+  } catch {
+    return { notificationWarning: "The balance was adjusted, but the member could not be notified." };
+  }
   return {};
 }
 

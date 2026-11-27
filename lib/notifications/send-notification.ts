@@ -56,6 +56,30 @@ export async function sendNotification(input: {
   return sendToBandMembers(context, input.recipientMembershipIds, input.notification);
 }
 
+/** Finance staff can notify one member in their own band after a ledger change. */
+export async function sendMemberFinanceNotification(input: {
+  membershipId: string;
+  notification: PushNotificationPayload;
+}): Promise<SendNotificationResult> {
+  const token = await getAccessToken();
+  const url = process.env.SUPABASE_URL;
+  const publishable = process.env.SUPABASE_PUBLISHABLE_KEY;
+  const secret = process.env.SUPABASE_SECRET_KEY;
+  if (!token || !url || !publishable || !secret) throw new Error("A valid signed-in session is required.");
+  const authResponse = await fetch(`${url}/auth/v1/user`, { headers: { apikey: publishable, Authorization: `Bearer ${token}` }, cache: "no-store" });
+  const user = (await authResponse.json().catch(() => null)) as { id?: string } | null;
+  if (!authResponse.ok || !user?.id) throw new Error("Unable to verify the signed-in user.");
+  const headers = { apikey: secret, Authorization: `Bearer ${secret}` };
+  const callerResponse = await fetch(`${url}/rest/v1/memberships?select=id,band_id,role&user_id=eq.${encodeURIComponent(user.id)}&confirmed=eq.true&limit=1`, { headers, cache: "no-store" });
+  const callerRows = (await callerResponse.json().catch(() => [])) as { id: string; band_id: string; role: string }[];
+  const caller = callerRows[0];
+  if (!callerResponse.ok || !caller || !["admin", "financial_admin"].includes(caller.role)) throw new Error("Only admins or financial admins can notify balance recipients.");
+  const recipientResponse = await fetch(`${url}/rest/v1/memberships?select=id&band_id=eq.${encodeURIComponent(caller.band_id)}&id=eq.${encodeURIComponent(input.membershipId)}&confirmed=eq.true&limit=1`, { headers, cache: "no-store" });
+  const recipients = (await recipientResponse.json().catch(() => [])) as { id: string }[];
+  if (!recipientResponse.ok || !recipients[0]) throw new Error("The balance recipient must be a confirmed member of your band.");
+  return sendToBandMembers({ url, headers, bandId: caller.band_id }, [input.membershipId], input.notification);
+}
+
 /** Send an approval reminder only for the caller's newly-created pending invitation membership. */
 export async function sendInvitationApprovalReminder(input: {
   bandId: string;

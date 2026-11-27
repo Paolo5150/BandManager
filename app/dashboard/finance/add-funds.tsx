@@ -14,6 +14,7 @@ export default function AddFunds({ membershipId, open, onOpen, onClose }: { memb
     setSaving(true);
     const result = await addFunds(new FormData(event.currentTarget));
     if (result.error) setMessage(result.error);
+    else if (result.notificationWarning) setMessage(result.notificationWarning);
     else { setMessage(""); onClose(); }
     setSaving(false);
   }

@@ -4,7 +4,7 @@ import { getAccessToken } from "@/lib/backend/session";
 import { revalidatePath } from "next/cache";
 import { sydneyDateTime } from "@/lib/sydney-date-time";
 import { formatEventDateTime, getSydneyDateTimeParts } from "@/lib/date-format";
-import { sendNotification } from "@/lib/notifications/send-notification";
+import { sendMemberFinanceNotification, sendNotification } from "@/lib/notifications/send-notification";
 
 export type ScheduleMember = { id: string; name: string };
 export type ScheduleEvent = { id: string; series_id?: string | null; type: string; title: string; starts_at: string; ends_at: string; location?: string | null; notes?: string | null; cost_cents?: number | null; status?: string; added_by?: string | null; added_by_name?: string | null };
@@ -339,15 +339,16 @@ export async function confirmScheduleEvent(formData: FormData): Promise<{ error?
       const balanceResponse = await fetch(`${context.url}/rest/v1/member_balances?select=membership_id,balance_cents&band_id=eq.${encodeURIComponent(context.bandId)}&membership_id=in.(${chargedMembershipIds.map(encodeURIComponent).join(",")})`, { headers: context.headers, cache: "no-store" });
       const balances = (await balanceResponse.json().catch(() => [])) as { membership_id: string; balance_cents?: number | string | null }[];
       if (!balanceResponse.ok) throw new Error("Unable to read member balances after charging.");
-      const membersBelowZero = balances.filter((row) => Number(row.balance_cents ?? 0) < 0);
-      const results = await Promise.all(membersBelowZero.map(async (member) => {
-        const balance = Number(member.balance_cents ?? 0);
+      const balanceByMembership = new Map(balances.map((row) => [row.membership_id, Number(row.balance_cents ?? 0)]));
+      const recipients = chargedMembershipIds.map((membershipId) => ({ membershipId, balance: balanceByMembership.get(membershipId) ?? 0 }));
+      const results = await Promise.all(recipients.map(async (recipient) => {
+        const balance = recipient.balance;
         try {
-          return await sendNotification({
-            recipientMembershipIds: [member.membership_id],
+          return await sendMemberFinanceNotification({
+            membershipId: recipient.membershipId,
             notification: {
-              title: "Your band balance is below zero",
-              body: `Your balance is now $${(balance / 100).toFixed(2)} after the charge for ${eventRows[0]?.title || "a confirmed event"}. Add funds to bring your balance back above zero.`,
+              title: "Event charge applied to your band balance",
+              body: `You were charged $${(Math.abs(submittedCharges.find((charge) => charge.membership_id === recipient.membershipId)?.amount_cents ?? 0) / 100).toFixed(2)} for ${eventRows[0]?.title || "a confirmed event"}. Your balance is now $${(balance / 100).toFixed(2)}.${balance < 0 ? " Low funds: please add funds to bring your balance above zero." : ""}`,
               url: "/dashboard/finance",
             },
           });
@@ -356,8 +357,7 @@ export async function confirmScheduleEvent(formData: FormData): Promise<{ error?
         }
       }));
       const sentCount = results.reduce((total, result) => total + result.sent, 0);
-      const failures = results.reduce((total, result) => total + result.failed, 0);
-      if (failures) notificationWarning = sentCount ? "Some members with negative balances could not be notified." : "The event was confirmed and charged, but negative-balance notifications could not be delivered.";
+      if (sentCount < recipients.length) notificationWarning = sentCount ? "Some charged members could not be notified. They may not have push notifications enabled." : "The event was confirmed and charged, but no charged members could be notified. They may not have push notifications enabled.";
     } catch {
       notificationWarning = "The event was confirmed and charged, but member balances could not be checked for notifications.";
     }
