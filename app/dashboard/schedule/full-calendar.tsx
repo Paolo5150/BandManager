@@ -7,12 +7,27 @@ import interactionPlugin from "@fullcalendar/interaction";
 import type { ScheduleEvent, ScheduleUnavailability } from "@/lib/backend/schedule";
 import type { Unavailability } from "@/lib/backend/unavailability";
 import { unavailableColor } from "../unavailability-colors";
+import { formatEventDateTime, getSydneyDateTimeParts } from "@/lib/date-format";
 
-export default function FullScheduleCalendar({ events = [], unavailability = [], personalEntries = [], onEvent, onDate, onUnavailable }: { events?: ScheduleEvent[]; unavailability?: ScheduleUnavailability[]; personalEntries?: Unavailability[]; onEvent?: (event: ScheduleEvent) => void; onDate: (date: string) => void; onUnavailable?: (names: string[]) => void }) {
+function calendarValue(value: string) {
+  const parts = getSydneyDateTimeParts(value);
+  return `${parts.date}T${parts.time}:00`;
+}
+
+export default function FullScheduleCalendar({ events = [], unavailability = [], personalEntries = [], onEvent, onDate, onUnavailable }: { events?: ScheduleEvent[]; unavailability?: ScheduleUnavailability[]; personalEntries?: Unavailability[]; onEvent?: (event: ScheduleEvent) => void; onDate: (date: string) => void; onUnavailable?: (details: string[]) => void }) {
   const calendarEvents = [
-    ...events.map((event) => ({ id: event.id, title: event.title, start: event.starts_at, end: event.ends_at, extendedProps: { scheduleEvent: event } })),
-    ...unavailability.map((entry) => ({ id: `unavailable-${entry.id}`, title: `! ${entry.member_name}`, start: entry.start_date, end: entry.end_date, ...unavailableColor(entry.membership_id, entry.member_name), extendedProps: { unavailable: true, memberName: entry.member_name } })),
-    ...personalEntries.map((entry) => ({ id: entry.id, title: `! ${entry.member_name}`, start: entry.start_date, end: entry.end_date, ...unavailableColor(entry.membership_id, entry.member_name), extendedProps: { personalEntry: entry, memberName: entry.member_name } })),
+    ...events.map((event) => ({
+      id: event.id,
+      title: event.title,
+      start: calendarValue(event.starts_at),
+      end: calendarValue(event.ends_at),
+      backgroundColor: event.status === "completed" ? "#dff5e9" : "#fff4ed",
+      borderColor: event.status === "completed" ? "#78c99a" : "#ffb08e",
+      textColor: event.status === "completed" ? "#24734b" : "#a04420",
+      extendedProps: { scheduleEvent: event },
+    })),
+    ...unavailability.map((entry) => ({ id: `unavailable-${entry.id}`, title: `! ${entry.member_name}`, start: calendarValue(entry.start_date), end: calendarValue(entry.end_date), ...unavailableColor(entry.membership_id, entry.member_name), extendedProps: { unavailable: true, memberName: entry.member_name, startDate: entry.start_date, endDate: entry.end_date } })),
+    ...personalEntries.map((entry) => ({ id: entry.id, title: `! ${entry.member_name}`, start: calendarValue(entry.start_date), end: calendarValue(entry.end_date), ...unavailableColor(entry.membership_id, entry.member_name), extendedProps: { personalEntry: entry, memberName: entry.member_name, startDate: entry.start_date, endDate: entry.end_date } })),
   ];
   return (
     <div className="full-calendar-wrapper">
@@ -43,7 +58,7 @@ export default function FullScheduleCalendar({ events = [], unavailability = [],
         eventClick={(info) => {
           const event = info.event.extendedProps.scheduleEvent as ScheduleEvent | undefined;
           if (event) onEvent?.(event);
-          else if (info.event.extendedProps.unavailable || info.event.extendedProps.personalEntry) onUnavailable?.([String(info.event.extendedProps.memberName)]);
+          else if (info.event.extendedProps.unavailable || info.event.extendedProps.personalEntry) onUnavailable?.([`${String(info.event.extendedProps.memberName)}: ${formatEventDateTime(String(info.event.extendedProps.startDate))} – ${formatEventDateTime(String(info.event.extendedProps.endDate))}`]);
         }}
         dateClick={(info) => onDate(info.dateStr.slice(0, 10))}
       />

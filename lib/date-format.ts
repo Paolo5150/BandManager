@@ -9,3 +9,9 @@ export function formatDateTime(value: string | Date) { return dateTimeFormatter.
 export function formatShortDateTime(value: string | Date) { return shortDateTimeFormatter.format(new Date(value)); }
 export function formatEventDateTime(value: string | Date) { return eventDateTimeFormatter.format(new Date(value)); }
 export function formatEventTime(value: string | Date) { return eventTimeFormatter.format(new Date(value)); }
+
+export function getSydneyDateTimeParts(value: string | Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Australia/Sydney", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(value));
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return { date: `${get("year")}-${get("month")}-${get("day")}`, time: `${get("hour")}:${get("minute")}` };
+}

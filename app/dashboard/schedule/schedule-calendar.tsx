@@ -18,7 +18,7 @@ import LogoutButton from "../logout-button";
 import NavigationLink from "../navigation-link";
 import { navigation } from "../navigation";
 import FullScheduleCalendar from "./full-calendar";
-import { formatEventDateTime as formatEventDate, formatEventTime } from "@/lib/date-format";
+import { formatEventDateTime as formatEventDate, formatEventTime, getSydneyDateTimeParts } from "@/lib/date-format";
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -191,9 +191,9 @@ export default function ScheduleCalendar({
 
   function editEventForm() {
     if (!selectedEvent) return null;
-    const start = new Date(selectedEvent.starts_at);
-    const end = new Date(selectedEvent.ends_at);
-    const date = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, "0")}-${String(start.getDate()).padStart(2, "0")}`;
+    const start = getSydneyDateTimeParts(selectedEvent.starts_at);
+    const end = getSydneyDateTimeParts(selectedEvent.ends_at);
+    const date = start.date;
     return (
       <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/30 p-0 sm:items-center sm:p-5">
         <form
@@ -326,7 +326,7 @@ export default function ScheduleCalendar({
               icon="clock"
               name="startsAt"
               type="time"
-              defaultValue={start.toTimeString().slice(0, 5)}
+              defaultValue={start.time}
               required
             />
             <PickerInput
@@ -334,7 +334,7 @@ export default function ScheduleCalendar({
               icon="clock"
               name="endsAt"
               type="time"
-              defaultValue={end.toTimeString().slice(0, 5)}
+              defaultValue={end.time}
               required
             />
           </div>

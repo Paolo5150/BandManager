@@ -4,7 +4,7 @@ import { getAccessToken } from "@/lib/backend/session";
 import { revalidatePath } from "next/cache";
 
 export type MemberBalance = { membershipId: string; name: string; balanceCents: number };
-export type LedgerTransaction = { id: string; memberName?: string | null; kind: string; amountCents: number; note?: string | null; createdAt: string; eventName?: string | null };
+export type LedgerTransaction = { id: string; memberName?: string | null; kind: string; amountCents: number; note?: string | null; createdAt: string; eventName?: string | null; eventDate?: string | null };
 
 export async function addFunds(formData: FormData): Promise<{ error?: string }> {
   const token = await getAccessToken();
@@ -95,21 +95,24 @@ export async function getMemberTransactions(): Promise<LedgerTransaction[]> {
   if (!response.ok) return [];
   const chargeIds = rows.map((row) => row.event_charge_id).filter((id): id is string => Boolean(id));
   const eventNames = new Map<string, string>();
+  const rowEventDates = new Map<string, string | null>();
   if (chargeIds.length) {
     const chargesResponse = await fetch(`${url}/rest/v1/event_charges?select=id,event_id&band_id=eq.${encodeURIComponent(own[0].band_id)}&id=in.(${chargeIds.map(encodeURIComponent).join(",")})`, { headers, cache: "no-store" });
     const charges = (await chargesResponse.json().catch(() => [])) as { id: string; event_id: string }[];
     const eventIds = charges.map((charge) => charge.event_id).filter(Boolean);
     if (chargesResponse.ok && eventIds.length) {
-      const eventsResponse = await fetch(`${url}/rest/v1/events?select=id,title&band_id=eq.${encodeURIComponent(own[0].band_id)}&id=in.(${eventIds.map(encodeURIComponent).join(",")})`, { headers, cache: "no-store" });
-      const events = (await eventsResponse.json().catch(() => [])) as { id: string; title: string }[];
+      const eventsResponse = await fetch(`${url}/rest/v1/events?select=id,title,starts_at&band_id=eq.${encodeURIComponent(own[0].band_id)}&id=in.(${eventIds.map(encodeURIComponent).join(",")})`, { headers, cache: "no-store" });
+      const events = (await eventsResponse.json().catch(() => [])) as { id: string; title: string; starts_at: string }[];
       const titles = new Map(events.map((event) => [event.id, event.title]));
+      const dates = new Map(events.map((event) => [event.id, event.starts_at]));
       charges.forEach((charge) => {
         const title = titles.get(charge.event_id);
         if (title) eventNames.set(charge.id, title);
       });
+      rows.forEach((row) => { if (row.event_charge_id) { const charge = charges.find((item) => item.id === row.event_charge_id); if (charge) rowEventDates.set(row.event_charge_id, dates.get(charge.event_id) ?? null); } });
     }
   }
-  return rows.map((row) => ({ id: row.id, memberName: row.member_name, kind: row.kind, amountCents: row.amount_cents, note: row.note, createdAt: row.created_at, eventName: row.event_charge_id ? eventNames.get(row.event_charge_id) : undefined }));
+  return rows.map((row) => ({ id: row.id, memberName: row.member_name, kind: row.kind, amountCents: row.amount_cents, note: row.note, createdAt: row.created_at, eventName: row.event_charge_id ? eventNames.get(row.event_charge_id) : undefined, eventDate: row.event_charge_id ? rowEventDates.get(row.event_charge_id) : undefined }));
 }
 
 export async function getTransactionsForMembership(membershipId: string): Promise<LedgerTransaction[]> {
@@ -129,16 +132,18 @@ export async function getTransactionsForMembership(membershipId: string): Promis
   if (!response.ok) return [];
   const chargeIds = rows.map((row) => row.event_charge_id).filter((id): id is string => Boolean(id));
   const eventNames = new Map<string, string>();
+  const rowEventDates = new Map<string, string | null>();
   if (chargeIds.length) {
     const chargesResponse = await fetch(`${url}/rest/v1/event_charges?select=id,event_id&band_id=eq.${encodeURIComponent(own[0].band_id)}&id=in.(${chargeIds.map(encodeURIComponent).join(",")})`, { headers, cache: "no-store" });
     const charges = (await chargesResponse.json().catch(() => [])) as { id: string; event_id: string }[];
     const eventIds = charges.map((charge) => charge.event_id);
     if (eventIds.length) {
-      const eventsResponse = await fetch(`${url}/rest/v1/events?select=id,title&band_id=eq.${encodeURIComponent(own[0].band_id)}&id=in.(${eventIds.map(encodeURIComponent).join(",")})`, { headers, cache: "no-store" });
-      const events = (await eventsResponse.json().catch(() => [])) as { id: string; title: string }[];
+      const eventsResponse = await fetch(`${url}/rest/v1/events?select=id,title,starts_at&band_id=eq.${encodeURIComponent(own[0].band_id)}&id=in.(${eventIds.map(encodeURIComponent).join(",")})`, { headers, cache: "no-store" });
+      const events = (await eventsResponse.json().catch(() => [])) as { id: string; title: string; starts_at: string }[];
       const titles = new Map(events.map((event) => [event.id, event.title]));
-      charges.forEach((charge) => { const title = titles.get(charge.event_id); if (title) eventNames.set(charge.id, title); });
+      const dates = new Map(events.map((event) => [event.id, event.starts_at]));
+      charges.forEach((charge) => { const title = titles.get(charge.event_id); if (title) eventNames.set(charge.id, title); rowEventDates.set(charge.id, dates.get(charge.event_id) ?? null); });
     }
   }
-  return rows.map((row) => ({ id: row.id, memberName: row.member_name, kind: row.kind, amountCents: row.amount_cents, note: row.note, createdAt: row.created_at, eventName: row.event_charge_id ? eventNames.get(row.event_charge_id) : undefined }));
+  return rows.map((row) => ({ id: row.id, memberName: row.member_name, kind: row.kind, amountCents: row.amount_cents, note: row.note, createdAt: row.created_at, eventName: row.event_charge_id ? eventNames.get(row.event_charge_id) : undefined, eventDate: row.event_charge_id ? rowEventDates.get(row.event_charge_id) : undefined }));
 }

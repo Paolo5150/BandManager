@@ -37,7 +37,7 @@ export default function MemberTransactions({ membershipId }: { membershipId: str
               <div className="min-w-0">
                 <p className="break-words text-[#303942]"><span className="capitalize">{row.kind}</span>{row.eventName ? ` · ${row.eventName}` : ""}</p>
                 {row.note && <p className="break-words text-xs text-[#69727d]">{row.note}</p>}
-                <p className="text-xs text-[#a0a5aa]">{formatDate(row.createdAt)}</p>
+                <p className="text-xs text-[#a0a5aa]">{formatDate(row.eventDate ?? row.createdAt)}</p>
               </div>
               <span className={`shrink-0 font-semibold tabular-nums ${row.amountCents < 0 ? "text-[#a04420]" : "text-[#24734b]"}`}>{row.amountCents < 0 ? "-$" : "$"}{Math.abs(row.amountCents / 100).toFixed(2)}</span>
             </div>

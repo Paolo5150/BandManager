@@ -6,6 +6,7 @@ import { sydneyDateTime } from "@/lib/sydney-date-time";
 
 export type Unavailability = { id: string; membership_id: string; member_name: string; start_date: string; end_date: string };
 export type UnavailabilityMember = { id: string; name: string };
+export type UnavailabilityAccess = { isAdmin: boolean; membershipId: string };
 
 async function context() {
   const token = await getAccessToken();
@@ -31,6 +32,11 @@ export async function getUnavailabilityMembers(): Promise<UnavailabilityMember[]
   const response = await fetch(`${c.url}/rest/v1/memberships?select=id,display_name&band_id=eq.${encodeURIComponent(c.bandId)}&confirmed=eq.true&order=display_name.asc`, { headers: c.headers, cache: "no-store" });
   const rows = (await response.json().catch(() => [])) as { id: string; display_name?: string | null }[];
   return response.ok ? rows.map((row) => ({ id: row.id, name: row.display_name || "Band member" })) : [];
+}
+
+export async function getUnavailabilityAccess(): Promise<UnavailabilityAccess | null> {
+  const c = await context();
+  return c ? { isAdmin: c.isAdmin, membershipId: c.membershipId } : null;
 }
 
 export async function getUnavailability(): Promise<Unavailability[]> {
@@ -66,12 +72,26 @@ export async function deleteUnavailability(formData: FormData): Promise<{ error?
   const c = await context();
   const id = String(formData.get("id") ?? "");
   if (!c || !id) return { error: "Unavailability not found." };
-  const ownership = c.isAdmin ? "" : `&membership_id=eq.${encodeURIComponent(c.membershipId)}`;
-  const response = await fetch(`${c.url}/rest/v1/unavailability?id=eq.${encodeURIComponent(id)}${ownership}`, { method: "DELETE", headers: c.headers, cache: "no-store" });
+  const targetResponse = await fetch(`${c.url}/rest/v1/unavailability?select=membership_id&id=eq.${encodeURIComponent(id)}&limit=1`, { headers: c.headers, cache: "no-store" });
+  const target = (await targetResponse.json().catch(() => [])) as { membership_id?: string }[];
+  if (!targetResponse.ok || !target[0]?.membership_id) return { error: "Unavailability not found." };
+  if (!c.isAdmin && target[0].membership_id !== c.membershipId) return { error: "You can only remove your own unavailability." };
+  const response = await fetch(`${c.url}/rest/v1/unavailability?id=eq.${encodeURIComponent(id)}&membership_id=eq.${encodeURIComponent(target[0].membership_id)}`, { method: "DELETE", headers: c.headers, cache: "no-store" });
   if (!response.ok) return { error: "Unable to remove your unavailability." };
   revalidatePath("/dashboard/unavailability");
   revalidatePath("/dashboard/schedule");
   return {};
+}
+
+export async function deleteAllUnavailability(membershipId: string): Promise<{ error?: string }> {
+  const c = await context();
+  if (!c || !membershipId) return { error: "You must be a confirmed band member." };
+  if (!c.isAdmin && membershipId !== c.membershipId) return { error: "Only admins can remove another member's unavailability." };
+  const member = await fetch(`${c.url}/rest/v1/memberships?select=id&band_id=eq.${encodeURIComponent(c.bandId)}&id=eq.${encodeURIComponent(membershipId)}&confirmed=eq.true&limit=1`, { headers: c.headers, cache: "no-store" });
+  if (!member.ok || !((await member.json().catch(() => [])) as { id?: string }[]).length) return { error: "That member is not part of your band." };
+  const response = await fetch(`${c.url}/rest/v1/unavailability?membership_id=eq.${encodeURIComponent(membershipId)}`, { method: "DELETE", headers: c.headers, cache: "no-store" });
+  if (!response.ok) return { error: "Unable to remove all unavailability." };
+  revalidatePath("/dashboard/unavailability"); revalidatePath("/dashboard/schedule"); return {};
 }
 
 export async function updateUnavailability(formData: FormData): Promise<{ error?: string }> {

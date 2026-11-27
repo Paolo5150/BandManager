@@ -3,6 +3,7 @@
 import { getAccessToken } from "@/lib/backend/session";
 import { revalidatePath } from "next/cache";
 import { sydneyDateTime } from "@/lib/sydney-date-time";
+import { getSydneyDateTimeParts } from "@/lib/date-format";
 
 export type ScheduleMember = { id: string; name: string };
 export type ScheduleEvent = { id: string; series_id?: string | null; type: string; title: string; starts_at: string; ends_at: string; location?: string | null; notes?: string | null; cost_cents?: number | null; status?: string };
@@ -158,9 +159,8 @@ export async function updateScheduleEvent(formData: FormData): Promise<{ error?:
   if (!seriesResponse.ok) return { error: "Unable to load the series." };
   const durationMs = end.getTime() - start.getTime();
   const results = await Promise.all(occurrences.map((occurrence) => {
-    const day = new Date(occurrence.starts_at);
-    const localDate = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
-    const occurrenceStart = new Date(`${localDate}T${startsAt}`);
+    const localDate = getSydneyDateTimeParts(occurrence.starts_at).date;
+    const occurrenceStart = sydneyDateTime(`${localDate}T${startsAt}`);
     const body = { ...shared, starts_at: occurrenceStart.toISOString(), ends_at: new Date(occurrenceStart.getTime() + durationMs).toISOString() };
     return fetch(`${context.url}/rest/v1/events?id=eq.${encodeURIComponent(occurrence.id)}&${band}`, { method: "PATCH", headers: patchHeaders, body: JSON.stringify(body), cache: "no-store" });
   }));
@@ -216,14 +216,27 @@ export async function confirmScheduleEvent(formData: FormData): Promise<{ error?
   const context = await getContext();
   const eventId = String(formData.get("eventId") ?? "");
   if (!context?.isAdmin || !eventId) return { error: "Only admins can confirm events." };
+  const eventResponse = await fetch(`${context.url}/rest/v1/events?select=status,cost_cents&id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}&limit=1`, { headers: context.headers, cache: "no-store" });
+  const eventRows = (await eventResponse.json().catch(() => [])) as { status?: string; cost_cents?: number | null }[];
+  if (!eventResponse.ok || !eventRows[0]) return { error: "Event not found." };
+  if (eventRows[0].status === "completed") return { error: "This event has already been confirmed." };
   const chargesResponse = await fetch(`${context.url}/rest/v1/event_charges?select=id,membership_id,member_name,amount_cents&event_id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}`, { headers: context.headers, cache: "no-store" });
   const charges = (await chargesResponse.json().catch(() => [])) as EventCharge[];
   if (!chargesResponse.ok) return { error: "Unable to load event charges." };
   const submittedCharges = charges.map((charge) => ({ ...charge, amount_cents: Math.round((Number(formData.get(`charge_${charge.id}`) ?? charge.amount_cents / 100) || 0) * 100) }));
+  const totalCharges = submittedCharges.reduce((sum, charge) => sum + charge.amount_cents, 0);
+  if (totalCharges !== Math.round(Number(eventRows[0].cost_cents ?? 0))) return { error: "Member charges must add up exactly to the event cost." };
   const updateResponse = await fetch(`${context.url}/rest/v1/events?id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}&status=eq.scheduled`, { method: "PATCH", headers: { ...context.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ status: "completed" }), cache: "no-store" });
   if (!updateResponse.ok) return { error: "Unable to complete the event." };
   if (charges.length) {
-    const ledgerResponse = await fetch(`${context.url}/rest/v1/member_ledger`, { method: "POST", headers: { ...context.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(submittedCharges.filter((charge) => charge.membership_id && charge.amount_cents > 0).map((charge) => ({ band_id: context.bandId, membership_id: charge.membership_id, member_name: charge.member_name, kind: "charge", amount_cents: -Math.abs(charge.amount_cents), event_charge_id: charge.id, created_by: context.userId }))), cache: "no-store" });
+    const chargeIds = submittedCharges.map((charge) => charge.id);
+    const existingResponse = await fetch(`${context.url}/rest/v1/member_ledger?select=event_charge_id&band_id=eq.${encodeURIComponent(context.bandId)}&event_charge_id=in.(${chargeIds.map(encodeURIComponent).join(",")})`, { headers: context.headers, cache: "no-store" });
+    const existing = (await existingResponse.json().catch(() => [])) as { event_charge_id?: string | null }[];
+    if (!existingResponse.ok) return { error: "Unable to check existing member charges." };
+    const existingIds = new Set(existing.map((entry) => entry.event_charge_id).filter((id): id is string => Boolean(id)));
+    const ledgerRows = submittedCharges.filter((charge) => charge.membership_id && charge.amount_cents > 0 && !existingIds.has(charge.id)).map((charge) => ({ band_id: context.bandId, membership_id: charge.membership_id, member_name: charge.member_name, kind: "charge", amount_cents: -Math.abs(charge.amount_cents), event_charge_id: charge.id, created_by: context.userId }));
+    if (!ledgerRows.length) { revalidatePath("/dashboard/schedule"); revalidatePath("/dashboard/finance"); return {}; }
+    const ledgerResponse = await fetch(`${context.url}/rest/v1/member_ledger`, { method: "POST", headers: { ...context.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(ledgerRows), cache: "no-store" });
     if (!ledgerResponse.ok) return { error: "Event completed, but member ledger entries could not be created." };
   }
   revalidatePath("/dashboard/schedule");
