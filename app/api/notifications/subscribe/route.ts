@@ -18,6 +18,27 @@ function isBrowserPushEndpoint(endpoint: string) {
   }
 }
 
+export async function GET(request: Request) {
+  const context = await getBandContext();
+  if (!context) return Response.json({ error: "Sign in to check notifications." }, { status: 401 });
+  const endpoint = new URL(request.url).searchParams.get("endpoint");
+  if (!endpoint || endpoint.length > 4096 || !isBrowserPushEndpoint(endpoint)) {
+    return Response.json({ error: "Invalid push subscription endpoint." }, { status: 400 });
+  }
+  const query = new URLSearchParams({
+    select: "id",
+    endpoint: `eq.${endpoint}`,
+    membership_id: `eq.${context.membershipId}`,
+    band_id: `eq.${context.bandId}`,
+    enabled: "eq.true",
+    limit: "1",
+  });
+  const response = await fetch(`${context.url}/rest/v1/push_subscriptions?${query}`, { headers: context.headers, cache: "no-store" });
+  if (!response.ok) return Response.json({ error: "Unable to check this device subscription." }, { status: 502 });
+  const rows = (await response.json().catch(() => [])) as { id?: string }[];
+  return Response.json({ subscribed: Boolean(rows[0]?.id) });
+}
+
 export async function POST(request: Request) {
   const context = await getBandContext();
   if (!context) return Response.json({ error: "Sign in to enable notifications." }, { status: 401 });

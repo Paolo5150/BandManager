@@ -21,7 +21,14 @@ export default function NotificationControls({ vapidPublicKey }: { vapidPublicKe
     if (!available) return;
     navigator.serviceWorker.getRegistration("/").then(async (registration) => {
       const subscription = await registration?.pushManager.getSubscription();
-      setSubscribed(Boolean(subscription));
+      if (!subscription) {
+        setSubscribed(false);
+        return;
+      }
+      const response = await fetch(`/api/notifications/subscribe?endpoint=${encodeURIComponent(subscription.endpoint)}`, { cache: "no-store" });
+      if (!response.ok) throw new Error("Unable to check this device subscription.");
+      const result = (await response.json()) as { subscribed?: boolean };
+      setSubscribed(result.subscribed === true);
     }).catch(() => undefined);
   }, []);
 
