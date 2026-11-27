@@ -140,7 +140,19 @@ export async function updateScheduleEvent(formData: FormData): Promise<{ error?:
   const seriesId = String(formData.get("seriesId") ?? "");
   const scope = String(formData.get("editScope") ?? "instance");
   if (!context || !id) return { error: "You must be a confirmed band member." };
-  if (!context.isAdmin) return { error: "Only admins can modify events." };
+  if (!context.isAdmin) {
+    if (!formData.has("notes")) return { error: "You can only edit event notes." };
+    const notes = String(formData.get("notes") ?? "").trim() || null;
+    const response = await fetch(`${context.url}/rest/v1/events?id=eq.${encodeURIComponent(id)}&band_id=eq.${encodeURIComponent(context.bandId)}&status=eq.scheduled`, {
+      method: "PATCH",
+      headers: { ...context.headers, "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({ notes }),
+      cache: "no-store",
+    });
+    if (!response.ok) return { error: "Unable to update event notes." };
+    revalidatePath("/dashboard/schedule");
+    return {};
+  }
   const existing = await fetch(`${context.url}/rest/v1/events?select=status&id=eq.${encodeURIComponent(id)}&band_id=eq.${encodeURIComponent(context.bandId)}&limit=1`, { headers: context.headers, cache: "no-store" });
   const existingRows = (await existing.json().catch(() => [])) as { status?: string }[];
   if (existingRows[0]?.status === "completed") return { error: "Confirmed events cannot be modified." };

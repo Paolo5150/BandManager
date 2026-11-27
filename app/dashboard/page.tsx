@@ -7,7 +7,7 @@ import NotificationControls from "./notification-controls";
 import { getScheduleAccess } from "@/lib/backend/schedule";
 import SendUpcomingReminderButton from "./send-upcoming-reminder-button";
 import OpenInMapsLink from "./open-in-maps-link";
-import { formatDateTime } from "@/lib/date-format";
+import { formatDate, formatEventTime, formatWeekday } from "@/lib/date-format";
 
 export const instant = false;
 
@@ -19,7 +19,14 @@ function EventCard({ event, label, canSendReminder = false }: { event: ScheduleE
         <>
           <h2 className="mt-2 break-words text-lg font-semibold text-[#17202a] sm:text-xl">{event.title}</h2>
           <dl className="mt-3 space-y-2 text-sm">
-            <div><dt className="font-medium text-[#303942]">When</dt><dd className="text-[#69727d]">{formatDateTime(event.starts_at)} &rarr; {formatDateTime(event.ends_at)}</dd></div>
+            <div>
+              <dt className="font-medium text-[#303942]">When</dt>
+              <dd className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <span className="text-xl font-bold leading-tight text-[#17202a] sm:text-2xl">{formatWeekday(event.starts_at)}, {formatDate(event.starts_at)}</span>
+                <span className="text-base font-semibold text-[#ff6b35]">{formatEventTime(event.starts_at)}</span>
+                <span className="text-xs text-[#69727d]">until {formatEventTime(event.ends_at)}</span>
+              </dd>
+            </div>
             {event.location && <div><dt className="font-medium text-[#303942]">Location</dt><dd className="break-words text-[#69727d]">{event.location}<OpenInMapsLink location={event.location} /></dd></div>}
             {event.notes && <div><dt className="font-medium text-[#303942]">Notes</dt><dd className="whitespace-pre-wrap break-words text-[#69727d]">{event.notes}</dd></div>}
           </dl>

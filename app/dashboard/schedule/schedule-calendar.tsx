@@ -164,6 +164,19 @@ export default function ScheduleCalendar({
   async function saveEdit(formData: FormData) {
     setEditSaving(true);
     setMessage("");
+    if (!isAdmin) {
+      const result = await updateScheduleEvent(formData);
+      if (result.error) {
+        setMessage(result.error);
+        setEditSaving(false);
+        return;
+      }
+      setSelectedEvent(null);
+      setIsEditing(false);
+      setMessage("Event notes updated.");
+      setEditSaving(false);
+      return;
+    }
     const cost = Math.round(
       (Number(formData.get("costCents") ?? 0) || 0) * 100,
     );
@@ -218,7 +231,7 @@ export default function ScheduleCalendar({
           className="max-h-[92vh] w-full max-w-lg space-y-4 overflow-y-auto overflow-x-hidden rounded-t-3xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:rounded-3xl sm:p-7"
         >
           <input type="hidden" name="eventId" value={selectedEvent.id} />
-          {selectedEvent.series_id && (
+          {isAdmin && selectedEvent.series_id && (
             <input
               type="hidden"
               name="seriesId"
@@ -261,107 +274,44 @@ export default function ScheduleCalendar({
               </label>
             </div>
           )}
-                 <label className="block text-sm font-medium text-[#303942]">
-            Type
-            <select
-              name="type"
-              defaultValue={selectedEvent.type}
-              className={`${fieldClass} mt-1.5`}
-            >
-              <option value="practice">Practice</option>
-              <option value="gig">Gig</option>
-            </select>
-          </label>
-          <label className="block text-sm font-medium text-[#303942]">
-            Title
-            <input
-              name="title"
-              defaultValue={selectedEvent.title}
-              className={`${fieldClass} mt-1.5`}
-            />
-          </label>
-          <label className="block text-sm font-medium text-[#303942]">
-            Total cost
-            <input
-              name="costCents"
-              type="number"
-              inputMode="decimal"
-              step="0.01"
-              defaultValue={
-                selectedEvent.cost_cents ? selectedEvent.cost_cents / 100 : 0
-              }
-              className={`${fieldClass} mt-1.5`}
-            />
-          </label>
-          <details className="rounded-xl border border-[#e8e1e9] p-4">
-            <summary className="cursor-pointer text-sm font-semibold text-[#303942]">
-              Member charges
-            </summary>
-            {chargesLoading ? (
-              <p className="mt-4 text-sm text-[#69727d]">Loading charges...</p>
-            ) : (
-              <div className="mt-4 space-y-3">
-                {members.map((member) => (
-                  <label
-                    key={member.id}
-                    className="grid grid-cols-[minmax(0,1fr)_7rem] items-center gap-3 text-sm"
-                  >
+          {isAdmin && (
+            <>
+              <label className="block text-sm font-medium text-[#303942]">
+                Type
+                <select name="type" defaultValue={selectedEvent.type} className={`${fieldClass} mt-1.5`}>
+                  <option value="practice">Practice</option>
+                  <option value="gig">Gig</option>
+                </select>
+              </label>
+              <label className="block text-sm font-medium text-[#303942]">
+                Title
+                <input name="title" defaultValue={selectedEvent.title} className={`${fieldClass} mt-1.5`} />
+              </label>
+              <label className="block text-sm font-medium text-[#303942]">
+                Total cost
+                <input name="costCents" type="number" inputMode="decimal" step="0.01" defaultValue={selectedEvent.cost_cents ? selectedEvent.cost_cents / 100 : 0} className={`${fieldClass} mt-1.5`} />
+              </label>
+              <details className="rounded-xl border border-[#e8e1e9] p-4">
+                <summary className="cursor-pointer text-sm font-semibold text-[#303942]">Member charges</summary>
+                {chargesLoading ? <p className="mt-4 text-sm text-[#69727d]">Loading charges...</p> : <div className="mt-4 space-y-3">{members.map((member) => (
+                  <label key={member.id} className="grid grid-cols-[minmax(0,1fr)_7rem] items-center gap-3 text-sm">
                     <span className="truncate">{member.name}</span>
-                    <input
-                      name={`charge_${member.id}`}
-                      type="number"
-                      inputMode="decimal"
-                      min="0"
-                      step="0.01"
-                      value={chargeInputs[member.id] ?? "0"}
-                      onChange={(event) =>
-                        setChargeInputs((prev) => ({
-                          ...prev,
-                          [member.id]: event.target.value,
-                        }))
-                      }
-                      className="h-10 w-full min-w-0 rounded-lg border px-3 text-base"
-                    />
+                    <input name={`charge_${member.id}`} type="number" inputMode="decimal" min="0" step="0.01" value={chargeInputs[member.id] ?? "0"} onChange={(event) => setChargeInputs((prev) => ({ ...prev, [member.id]: event.target.value }))} className="h-10 w-full min-w-0 rounded-lg border px-3 text-base" />
                   </label>
-                ))}
+                ))}</div>}
+                {!chargesLoading && <p className={`mt-4 text-sm font-semibold ${editChargeTotalCents === editExpectedCostCents ? "text-[#24734b]" : "text-[#a04420]"}`}>Current total: ${(editChargeTotalCents / 100).toFixed(2)} / ${(editExpectedCostCents / 100).toFixed(2)}</p>}
+              </details>
+              <PickerInput label="Date" icon="calendar" name="date" type="date" defaultValue={date} required />
+              <div className="grid grid-cols-2 gap-3">
+                <PickerInput label="Starts" icon="clock" name="startsAt" type="time" defaultValue={start.time} required />
+                <PickerInput label="Ends" icon="clock" name="endsAt" type="time" defaultValue={end.time} required />
               </div>
-            )}
-            {!chargesLoading && <p className={`mt-4 text-sm font-semibold ${editChargeTotalCents === editExpectedCostCents ? "text-[#24734b]" : "text-[#a04420]"}`}>Current total: ${(editChargeTotalCents / 100).toFixed(2)} / ${(editExpectedCostCents / 100).toFixed(2)}</p>}
-          </details>
-          <PickerInput
-            label="Date"
-            icon="calendar"
-            name="date"
-            type="date"
-            defaultValue={date}
-            required
-          />
-          <div className="grid grid-cols-2 gap-3">
-            <PickerInput
-              label="Starts"
-              icon="clock"
-              name="startsAt"
-              type="time"
-              defaultValue={start.time}
-              required
-            />
-            <PickerInput
-              label="Ends"
-              icon="clock"
-              name="endsAt"
-              type="time"
-              defaultValue={end.time}
-              required
-            />
-          </div>
-          <label className="block text-sm font-medium text-[#303942]">
-            Location
-            <input
-              name="location"
-              defaultValue={selectedEvent.location ?? ""}
-              className={`${fieldClass} mt-1.5`}
-            />
-          </label>
+              <label className="block text-sm font-medium text-[#303942]">
+                Location
+                <input name="location" defaultValue={selectedEvent.location ?? ""} className={`${fieldClass} mt-1.5`} />
+              </label>
+            </>
+          )}
           <label className="block text-sm font-medium text-[#303942]">
             Notes
             <textarea
@@ -445,9 +395,8 @@ export default function ScheduleCalendar({
   }
 
   const selectedEventIsCompleted = selectedEvent?.status === "completed";
-  const canModifySelectedEvent = Boolean(
-    isAdmin && selectedEvent && !selectedEventIsCompleted,
-  );
+  const canEditSelectedEvent = Boolean(selectedEvent && !selectedEventIsCompleted);
+  const canModifySelectedEvent = Boolean(isAdmin && selectedEvent && !selectedEventIsCompleted);
 
   return (
     <div className="flex min-h-screen bg-[#f8f5f1]">
@@ -606,7 +555,7 @@ export default function ScheduleCalendar({
                   </p>
                 )}
             </div>
-            {canModifySelectedEvent && <button type="button" onClick={() => void startEdit(selectedEvent)} className="mt-6 h-11 w-full rounded-xl bg-[#ff6b35] text-sm font-semibold text-white">Edit</button>}
+            {canEditSelectedEvent && <button type="button" onClick={() => void startEdit(selectedEvent)} className="mt-6 h-11 w-full rounded-xl bg-[#ff6b35] text-sm font-semibold text-white">{isAdmin ? "Edit event" : "Edit notes"}</button>}
             {isAdmin && <button type="button" onClick={() => void sendReminder()} disabled={reminderSending} className="mt-3 flex h-11 w-full items-center justify-center rounded-xl border border-[#f0d4c5] bg-[#fff8f3] px-3 text-sm font-semibold text-[#a04420] disabled:cursor-not-allowed disabled:opacity-50">{reminderSending ? <LoadingSpinner label="Sending reminder..." /> : "Send reminder"}</button>}
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               {canModifySelectedEvent && (
