@@ -49,8 +49,19 @@ export async function getUnavailability(): Promise<Unavailability[]> {
 
 export async function addUnavailability(formData: FormData): Promise<{ error?: string }> {
   const c = await context();
-  const startDate = String(formData.get("startDate") ?? "");
-  const endDate = String(formData.get("endDate") ?? "");
+  const allDay = formData.get("allDay") === "true";
+  let startDate = String(formData.get("startDate") ?? "");
+  let endDate = String(formData.get("endDate") ?? "");
+  if (allDay) {
+    const date = startDate.slice(0, 10);
+    const requestedEndDate = String(formData.get("allDayEndDate") ?? date);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !/^\d{4}-\d{2}-\d{2}$/.test(requestedEndDate) || requestedEndDate < date) return { error: "Choose a valid all-day date range." };
+    const next = new Date(`${requestedEndDate}T00:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    const nextDate = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
+    startDate = `${date}T00:00`;
+    endDate = `${nextDate}T00:00`;
+  }
   const requestedMembershipId = String(formData.get("membershipId") ?? "");
   if (!c) return { error: "You must be a confirmed band member." };
   const membershipId = requestedMembershipId && requestedMembershipId !== c.membershipId ? (c.isAdmin ? requestedMembershipId : "") : c.membershipId;
