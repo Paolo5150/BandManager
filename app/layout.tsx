@@ -15,6 +15,18 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "BandManager | Your band, together",
   description: "Manage your band, all in one place.",
+  applicationName: "BandManager",
+  appleWebApp: {
+    capable: true,
+    title: "BandManager",
+    statusBarStyle: "default",
+  },
+};
+
+export const viewport = {
+  themeColor: "#ff6b35",
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

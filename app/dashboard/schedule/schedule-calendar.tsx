@@ -6,6 +6,8 @@ import {
   getEventCharges,
   deleteScheduleEvent,
   saveEventMemberCharges,
+  sendScheduleReminder,
+  sendScheduleUpdateNotification,
   updateScheduleEvent,
   type ScheduleEvent,
   type ScheduleMember,
@@ -104,11 +106,14 @@ export default function ScheduleCalendar({
   const [eventSaving, setEventSaving] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [deleteAction, setDeleteAction] = useState<"event" | "series" | null>(null);
+  const [reminderSending, setReminderSending] = useState(false);
   const [editScope, setEditScope] = useState<"instance" | "series">("instance");
   const [selectedDate, setSelectedDate] = useState("");
   const [repeatWeeks, setRepeatWeeks] = useState("0");
   const [repeatIndefinitely, setRepeatIndefinitely] = useState(true);
   const [eventHasCost, setEventHasCost] = useState(false);
+  const [notifyEditMembers, setNotifyEditMembers] = useState(true);
+  const [notifyMembers, setNotifyMembers] = useState(true);
   const addChargeTotalCents = members.reduce((sum, member) => sum + Math.round((Number(addChargeInputs[member.id]) || 0) * 100), 0);
   const addExpectedCostCents = Math.round((Number(addCostInput) || 0) * 100);
   const editChargeTotalCents = members.reduce((sum, member) => sum + Math.round((Number(chargeInputs[member.id]) || 0) * 100), 0);
@@ -130,7 +135,7 @@ export default function ScheduleCalendar({
     const result = await createScheduleEvent(formData);
     if (result.error) setMessage(result.error);
     else {
-      setMessage("Event added.");
+      setMessage(result.notificationWarning ? `Event added. ${result.notificationWarning}` : result.notificationSent ? "Event added and band members notified." : "Event added.");
       setIsOpen(false);
     }
     setEventSaving(false);
@@ -141,6 +146,7 @@ export default function ScheduleCalendar({
     setSelectedEvent(event);
     setMessage("");
     setEditScope("instance");
+    setNotifyEditMembers(true);
     setChargeInputs({});
     setChargesLoading(true);
     setIsEditing(true);
@@ -184,9 +190,15 @@ export default function ScheduleCalendar({
       setEditSaving(false);
       return;
     }
+    let notificationMessage = "Event updated.";
+    if (formData.get("notifyMembers") === "true") {
+      const notificationResult = await sendScheduleUpdateNotification(formData);
+      if (notificationResult.warning) notificationMessage = `Event updated. ${notificationResult.warning}`;
+      else if (notificationResult.sent) notificationMessage = "Event updated and band members notified.";
+    }
     setSelectedEvent(null);
     setIsEditing(false);
-    setMessage("Event updated.");
+    setMessage(notificationMessage);
     setEditSaving(false);
   }
 
@@ -223,6 +235,7 @@ export default function ScheduleCalendar({
               &times;
             </button>
           </div>
+          {isAdmin && <label className="flex items-center gap-3 rounded-xl border border-[#e8e1e9] bg-white px-4 py-3 text-sm font-medium text-[#303942]"><input name="notifyMembers" type="checkbox" value="true" checked={notifyEditMembers} onChange={(event) => setNotifyEditMembers(event.target.checked)} className="h-5 w-5 accent-[#ff6b35]" />Send update notification to band members</label>}
           {selectedEvent.series_id && (
             <div className="flex gap-4 text-sm">
               <label className="flex items-center gap-2">
@@ -401,9 +414,19 @@ export default function ScheduleCalendar({
     if (result.error) setMessage(result.error);
     else {
       setSelectedEvent(null);
-      setMessage("Event deleted.");
+      setMessage(result.notificationWarning ? `Event deleted. ${result.notificationWarning}` : "Event deleted and band members reminded.");
     }
     setDeleteAction(null);
+  }
+
+  async function sendReminder() {
+    if (!selectedEvent || reminderSending) return;
+    setReminderSending(true);
+    setMessage("");
+    const result = await sendScheduleReminder(selectedEvent.id);
+    if (result.error) setMessage(result.error);
+    else setMessage(result.warning || `Reminder sent to ${result.sent ?? 0} device${result.sent === 1 ? "" : "s"}.`);
+    setReminderSending(false);
   }
 
   function openAddEvent() {
@@ -411,6 +434,7 @@ export default function ScheduleCalendar({
     setMessage("");
     setSelectedDate("");
     setEventHasCost(false);
+    setNotifyMembers(true);
     setAddCostInput("");
     setAddChargeInputs({});
     setIsOpen(true);
@@ -576,24 +600,8 @@ export default function ScheduleCalendar({
                   </p>
                 )}
             </div>
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              {canModifySelectedEvent && (
-                <button
-                  type="button"
-                  onClick={() => void startEdit(selectedEvent)}
-                  className="rounded-xl bg-[#ff6b35] py-3 text-sm font-semibold text-white"
-                >
-                  Edit
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => setSelectedEvent(null)}
-                className="rounded-xl bg-[#f5f2ee] py-3 text-sm font-semibold"
-              >
-                Close
-              </button>
-            </div>
+            {canModifySelectedEvent && <button type="button" onClick={() => void startEdit(selectedEvent)} className="mt-6 h-11 w-full rounded-xl bg-[#ff6b35] text-sm font-semibold text-white">Edit</button>}
+            {isAdmin && <button type="button" onClick={() => void sendReminder()} disabled={reminderSending} className="mt-3 flex h-11 w-full items-center justify-center rounded-xl border border-[#f0d4c5] bg-[#fff8f3] px-3 text-sm font-semibold text-[#a04420] disabled:cursor-not-allowed disabled:opacity-50">{reminderSending ? <LoadingSpinner label="Sending reminder..." /> : "Send reminder"}</button>}
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               {canModifySelectedEvent && (
                 <>
@@ -658,6 +666,7 @@ export default function ScheduleCalendar({
                 className={`${fieldClass} mt-1.5`}
               />
             </label>
+            {isAdmin && <label className="flex items-center gap-3 rounded-xl border border-[#e8e1e9] bg-white px-4 py-3 text-sm font-medium text-[#303942]"><input name="notifyMembers" type="checkbox" value="true" checked={notifyMembers} onChange={(event) => setNotifyMembers(event.target.checked)} className="h-5 w-5 accent-[#ff6b35]" />Send notification to band members</label>}
             {isAdmin && (
               <>
                 <label className="flex items-center gap-3 rounded-xl border border-[#e8e1e9] bg-white px-4 py-3 text-sm font-medium text-[#303942]">

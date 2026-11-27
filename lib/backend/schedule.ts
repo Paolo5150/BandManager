@@ -3,7 +3,8 @@
 import { getAccessToken } from "@/lib/backend/session";
 import { revalidatePath } from "next/cache";
 import { sydneyDateTime } from "@/lib/sydney-date-time";
-import { getSydneyDateTimeParts } from "@/lib/date-format";
+import { formatEventDateTime, getSydneyDateTimeParts } from "@/lib/date-format";
+import { sendNotification } from "@/lib/notifications/send-notification";
 
 export type ScheduleMember = { id: string; name: string };
 export type ScheduleEvent = { id: string; series_id?: string | null; type: string; title: string; starts_at: string; ends_at: string; location?: string | null; notes?: string | null; cost_cents?: number | null; status?: string };
@@ -170,15 +171,77 @@ export async function updateScheduleEvent(formData: FormData): Promise<{ error?:
   return {};
 }
 
-export async function deleteScheduleEvent(formData: FormData): Promise<{ error?: string }> {
+export async function sendScheduleUpdateNotification(formData: FormData): Promise<{ sent?: number; warning?: string }> {
+  const context = await getContext();
+  const eventId = String(formData.get("eventId") ?? "");
+  const seriesId = String(formData.get("seriesId") ?? "");
+  const scope = String(formData.get("editScope") ?? "instance");
+  if (!context?.isAdmin || !eventId) return { warning: "Only admins can send event update notifications." };
+  const eventResponse = await fetch(`${context.url}/rest/v1/events?select=id,title,type,starts_at,ends_at,location&id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}&limit=1`, { headers: context.headers, cache: "no-store" });
+  const eventRows = (await eventResponse.json().catch(() => [])) as { id: string; title: string; type: string; starts_at: string; ends_at: string; location?: string | null }[];
+  if (!eventResponse.ok || !eventRows[0]) return { warning: "The event was updated, but its details could not be loaded for notification." };
+  const membershipsResponse = await fetch(`${context.url}/rest/v1/memberships?select=id&band_id=eq.${encodeURIComponent(context.bandId)}&confirmed=eq.true`, { headers: context.headers, cache: "no-store" });
+  const memberships = (await membershipsResponse.json().catch(() => [])) as { id: string }[];
+  if (!membershipsResponse.ok) return { warning: "The event was updated, but band members could not be loaded for notification." };
+  const event = eventRows[0];
+  const seriesText = scope === "series" && seriesId ? " The whole recurring series was updated." : "";
+  const locationText = event.location ? ` Location: ${event.location}.` : "";
+  try {
+    const result = await sendNotification({
+      recipientMembershipIds: memberships.map((membership) => membership.id),
+      notification: {
+        title: `${event.type === "gig" ? "Gig" : "Practice"} updated: ${event.title}`,
+        body: `${formatEventDateTime(event.starts_at)} – ${formatEventDateTime(event.ends_at)}.${locationText}${seriesText}`,
+        url: "/dashboard/schedule",
+      },
+    });
+    if (!result.sent) return { warning: result.failed ? "The event was updated, but push delivery failed." : "The event was updated, but no members have enabled push notifications." };
+    if (result.failed) return { sent: result.sent, warning: "Some member devices could not be notified." };
+    return { sent: result.sent };
+  } catch {
+    return { warning: "The event was updated, but push notification delivery failed." };
+  }
+}
+
+export async function sendScheduleReminder(eventId: string): Promise<{ sent?: number; warning?: string; error?: string }> {
+  const context = await getContext();
+  if (!context?.isAdmin || !eventId) return { error: "Only admins can send event reminders." };
+  const eventResponse = await fetch(`${context.url}/rest/v1/events?select=id,title,type,starts_at,ends_at,location,series_id&id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}&limit=1`, { headers: context.headers, cache: "no-store" });
+  const events = (await eventResponse.json().catch(() => [])) as { id: string; title: string; type: string; starts_at: string; ends_at: string; location?: string | null; series_id?: string | null }[];
+  if (!eventResponse.ok || !events[0]) return { error: "Event not found in your band." };
+  const membershipsResponse = await fetch(`${context.url}/rest/v1/memberships?select=id&band_id=eq.${encodeURIComponent(context.bandId)}&confirmed=eq.true`, { headers: context.headers, cache: "no-store" });
+  const memberships = (await membershipsResponse.json().catch(() => [])) as { id: string }[];
+  if (!membershipsResponse.ok) return { warning: "Could not load band members for this reminder." };
+  const event = events[0];
+  const location = event.location ? ` at ${event.location}` : "";
+  try {
+    const result = await sendNotification({
+      recipientMembershipIds: memberships.map((membership) => membership.id),
+      notification: {
+        title: `Reminder: ${event.title}`,
+        body: `${formatEventDateTime(event.starts_at)} – ${formatEventDateTime(event.ends_at)}${location}.`,
+        url: "/dashboard/schedule",
+      },
+    });
+    if (!result.sent) return { warning: result.failed ? "Reminder delivery failed." : "No members have enabled push notifications." };
+    if (result.failed) return { sent: result.sent, warning: "Reminder sent, but some devices could not be notified." };
+    return { sent: result.sent };
+  } catch {
+    return { warning: "Reminder delivery failed." };
+  }
+}
+
+export async function deleteScheduleEvent(formData: FormData): Promise<{ error?: string; notificationWarning?: string }> {
   const context = await getContext();
   const eventId = String(formData.get("eventId") ?? "");
   const seriesId = String(formData.get("seriesId") ?? "");
   if (!context || !eventId) return { error: "You must be a confirmed band member." };
   if (!context.isAdmin) return { error: "Only admins can delete events." };
-  const existing = await fetch(`${context.url}/rest/v1/events?select=status&id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}&limit=1`, { headers: context.headers, cache: "no-store" });
-  const existingRows = (await existing.json().catch(() => [])) as { status?: string }[];
+  const existing = await fetch(`${context.url}/rest/v1/events?select=status,title,type,starts_at,ends_at,location&id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}&limit=1`, { headers: context.headers, cache: "no-store" });
+  const existingRows = (await existing.json().catch(() => [])) as { status?: string; title?: string; type?: string; starts_at?: string; ends_at?: string; location?: string | null }[];
   if (existingRows[0]?.status === "completed") return { error: "Confirmed events cannot be deleted." };
+  if (!existing.ok || !existingRows[0]?.starts_at || !existingRows[0].ends_at) return { error: "Unable to load the event details before deletion." };
+  const event = existingRows[0] as { status?: string; title?: string; type?: string; starts_at: string; ends_at: string; location?: string | null };
   const query = seriesId ? `series_id=eq.${encodeURIComponent(seriesId)}&band_id=eq.${encodeURIComponent(context.bandId)}` : `id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}`;
   const response = await fetch(`${context.url}/rest/v1/events?${query}`, { method: "DELETE", headers: context.headers, cache: "no-store" });
   if (!response.ok) return { error: "Unable to delete the event." };
@@ -189,6 +252,27 @@ export async function deleteScheduleEvent(formData: FormData): Promise<{ error?:
   }
 
   revalidatePath("/dashboard/schedule");
+  const membershipsResponse = await fetch(`${context.url}/rest/v1/memberships?select=id&band_id=eq.${encodeURIComponent(context.bandId)}&confirmed=eq.true`, { headers: context.headers, cache: "no-store" });
+  const memberships = (await membershipsResponse.json().catch(() => [])) as { id: string }[];
+  if (!membershipsResponse.ok) return { notificationWarning: "The event was deleted, but band members could not be loaded for notification." };
+  try {
+    const kind = event.type === "gig" ? "Gig" : "Practice";
+    const title = event.title || kind;
+    const locationText = event.location ? ` at ${event.location}` : "";
+    const seriesText = seriesId ? " This recurring series was removed." : " This event was removed from the schedule.";
+    const notification = await sendNotification({
+      recipientMembershipIds: memberships.map((membership) => membership.id),
+      notification: {
+        title: `Reminder: ${title} has been deleted`,
+        body: `${kind} scheduled for ${formatEventDateTime(event.starts_at)} – ${formatEventDateTime(event.ends_at)}${locationText}.${seriesText}`,
+        url: "/dashboard/schedule",
+      },
+    });
+    if (!notification.sent) return { notificationWarning: notification.failed ? "The event was deleted, but push delivery failed." : "The event was deleted, but no members have enabled push notifications." };
+    if (notification.failed) return { notificationWarning: "The event was deleted, but some devices could not be notified." };
+  } catch {
+    return { notificationWarning: "The event was deleted, but push notification delivery failed." };
+  }
   return {};
 }
 
@@ -244,7 +328,7 @@ export async function confirmScheduleEvent(formData: FormData): Promise<{ error?
   return {};
 }
 
-export async function createScheduleEvent(formData: FormData): Promise<{ error?: string }> {
+export async function createScheduleEvent(formData: FormData): Promise<{ error?: string; notificationSent?: boolean; notificationWarning?: string }> {
   const context = await getContext();
   if (!context) return { error: "You must be a confirmed band member." };
   if (!context.isAdmin) return { error: "Only admins can add events." };
@@ -289,8 +373,33 @@ export async function createScheduleEvent(formData: FormData): Promise<{ error?:
   if (!response.ok || !createdEvents.length) return { error: "Unable to save the event." };
   if (chargeRows.length) {
     const charges = createdEvents.flatMap((event) => chargeRows.map((charge) => ({ band_id: context.bandId, event_id: event.id, membership_id: charge.membership_id, amount_cents: charge.amount_cents })));
-    await fetch(`${context.url}/rest/v1/event_charges`, { method: "POST", headers, body: JSON.stringify(charges), cache: "no-store" });
+    const chargesResponse = await fetch(`${context.url}/rest/v1/event_charges`, { method: "POST", headers, body: JSON.stringify(charges), cache: "no-store" });
+    if (!chargesResponse.ok) return { error: "The event was saved, but its member charges could not be saved." };
   }
   revalidatePath("/dashboard/schedule");
+  if (formData.get("notifyMembers") === "true" && context.isAdmin) {
+    try {
+      const membershipResponse = await fetch(`${context.url}/rest/v1/memberships?select=id&band_id=eq.${encodeURIComponent(context.bandId)}&confirmed=eq.true`, { headers: context.headers, cache: "no-store" });
+      const memberships = (await membershipResponse.json().catch(() => [])) as { id: string }[];
+      if (!membershipResponse.ok) return { notificationWarning: "The event was saved, but member notifications could not be prepared." };
+      const eventTitle = title || (type === "gig" ? "Gig" : "Practice");
+      const locationText = location ? ` at ${location}` : "";
+      const repeatsText = repeatWeeks ? " This event is part of a repeating series." : "";
+      const eventEnd = new Date(start.getTime() + durationMinutes * 60_000);
+      const notificationResult = await sendNotification({
+        recipientMembershipIds: memberships.map((membership) => membership.id),
+        notification: {
+          title: `${type === "gig" ? "Gig" : "Practice"}: ${eventTitle}`,
+          body: `${formatEventDateTime(start)} – ${formatEventDateTime(eventEnd)}${locationText}.${repeatsText}`,
+          url: "/dashboard/schedule",
+        },
+      });
+      if (notificationResult.failed && !notificationResult.sent) return { notificationWarning: "The event was saved, but push notifications could not be delivered. Check that members have enabled notifications." };
+      if (!notificationResult.sent) return { notificationWarning: "The event was saved, but no members have enabled push notifications yet." };
+      return { notificationSent: true };
+    } catch {
+      return { notificationWarning: "The event was saved, but push notification delivery failed." };
+    }
+  }
   return {};
 }

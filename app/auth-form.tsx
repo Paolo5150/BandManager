@@ -67,7 +67,7 @@ export default function AuthForm({ inviteBandId: initialInviteBandId, invitedBan
         setPhoneNumber(String(formData.get("phone") ?? "").trim());
         setMessage("");
       } else {
-        router.push(result.confirmed === false ? "/pending-confirmation" : "/dashboard");
+        window.location.assign(result.confirmed === false ? "/pending-confirmation" : "/dashboard");
       }
     } catch {
       setIsError(true);
