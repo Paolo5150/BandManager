@@ -56,7 +56,7 @@ html {
   --fc-button-border-color: #ff6b35;
   --fc-button-hover-bg-color: #e95a27;
   --fc-button-hover-border-color: #e95a27;
-  --fc-today-bg-color: #fff4ed;
+  --fc-today-bg-color: #fff0df;
   --fc-page-bg-color: #ffffff;
   --fc-neutral-bg-color: #f8f5f1;
   color: #303942;
@@ -85,12 +85,67 @@ html {
   font-size: 0.85rem;
 }
 
+.full-calendar-wrapper .fc-daygrid-day.fc-day-today .fc-daygrid-day-frame {
+  background: #eaf3ff !important;
+  box-shadow: inset 0 0 0 3px #3978c5 !important;
+}
+
+.full-calendar-wrapper .fc-daygrid-day.fc-day-today {
+  background: #eaf3ff !important;
+  box-shadow: inset 0 0 0 3px #3978c5 !important;
+}
+
+.full-calendar-wrapper .fc-daygrid-day.fc-day-today .fc-daygrid-day-number {
+  margin: 0.25rem;
+  min-width: 1.8rem;
+  min-height: 1.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: #285f9e !important;
+  color: #ffffff !important;
+  font-weight: 700;
+}
+
 .full-calendar-wrapper .fc-event {
   cursor: pointer;
   border-radius: 0.5rem;
   padding: 0.15rem 0.35rem;
   font-size: 0.75rem;
   font-weight: 600;
+}
+
+/* A scheduled event highlights its whole date cell; the title stays as a
+   prominent clickable block, while unavailability entries remain separate. */
+.full-calendar-wrapper .fc-daygrid-day.schedule-day-scheduled .fc-daygrid-day-frame {
+  background: #fff8f3;
+}
+
+.full-calendar-wrapper .fc-daygrid-day.schedule-day-confirmed .fc-daygrid-day-frame {
+  background: #eef9f2;
+}
+
+.full-calendar-wrapper .fc-daygrid-day.schedule-day-scheduled .schedule-calendar-event,
+.full-calendar-wrapper .fc-daygrid-day.schedule-day-confirmed .schedule-calendar-event {
+  display: block;
+  min-height: 2rem;
+  margin: 0.2rem 0.25rem;
+  padding: 0.35rem 0.45rem;
+  border-width: 1px;
+  border-radius: 0.55rem;
+  font-size: 0.78rem;
+  line-height: 1.15rem;
+  white-space: normal;
+  box-shadow: 0 1px 2px rgb(23 32 42 / 8%);
+}
+
+.full-calendar-wrapper .unavailability-calendar-event {
+  position: relative;
+  z-index: 2;
+  display: block;
+  margin: 0.15rem 0.25rem;
+  padding: 0.15rem 0.35rem;
 }
 
 .full-calendar-wrapper .fc-timegrid-slot {
@@ -141,6 +196,15 @@ html {
   .full-calendar-wrapper .fc-daygrid-event {
     padding: 0.1rem;
     font-size: 0.7rem;
+  }
+
+  .full-calendar-wrapper .fc-daygrid-day.schedule-day-scheduled .schedule-calendar-event,
+  .full-calendar-wrapper .fc-daygrid-day.schedule-day-confirmed .schedule-calendar-event {
+    min-height: 1.75rem;
+    margin: 0.12rem;
+    padding: 0.25rem 0.3rem;
+    font-size: 0.68rem;
+    line-height: 0.95rem;
   }
 
   .full-calendar-wrapper .fc-daygrid-event .fc-event-time {

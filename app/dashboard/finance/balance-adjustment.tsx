@@ -13,8 +13,10 @@ export default function BalanceAdjustment({ membershipId, open, onOpen, onClose 
     setSaving(true);
     const result = await addBalanceAdjustment(new FormData(event.currentTarget));
     if (result.error) setMessage(result.error);
-    else if (result.notificationWarning) setMessage(result.notificationWarning);
-    else { setMessage(""); onClose(); }
+    else {
+      if (result.notificationWarning) setMessage(result.notificationWarning);
+      onClose();
+    }
     setSaving(false);
   }
 

@@ -20,6 +20,7 @@ import LogoutButton from "../logout-button";
 import NavigationLink from "../navigation-link";
 import { navigation } from "../navigation";
 import FullScheduleCalendar from "./full-calendar";
+import OpenInMapsLink from "../open-in-maps-link";
 import { formatEventDateTime as formatEventDate, formatEventTime, getSydneyDateTimeParts } from "@/lib/date-format";
 
 const currencyFormatter = new Intl.NumberFormat("en-US", {
@@ -118,7 +119,7 @@ export default function ScheduleCalendar({
   const addChargeTotalCents = members.reduce((sum, member) => sum + Math.round((Number(addChargeInputs[member.id]) || 0) * 100), 0);
   const addExpectedCostCents = Math.round((Number(addCostInput) || 0) * 100);
   const editChargeTotalCents = members.reduce((sum, member) => sum + Math.round((Number(chargeInputs[member.id]) || 0) * 100), 0);
-  const editExpectedCostCents = Math.round((Number(selectedEvent?.cost_cents) || 0) * 100);
+  const editExpectedCostCents = Math.round(Number(selectedEvent?.cost_cents) || 0);
 
   async function submit(formData: FormData) {
     const actionId = ++statusActionId.current;
@@ -586,6 +587,7 @@ export default function ScheduleCalendar({
                   <b>Location</b>
                   <br />
                   {selectedEvent.location}
+                  <OpenInMapsLink location={selectedEvent.location} />
                 </p>
               )}
               {selectedEvent.notes && (

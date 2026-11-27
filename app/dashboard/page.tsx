@@ -4,11 +4,14 @@ import { getUpcomingOverviewEvents, type ScheduleEvent } from "@/lib/backend/sch
 import DashboardShell from "./dashboard-shell";
 import PageHeader from "./page-header";
 import NotificationControls from "./notification-controls";
+import { getScheduleAccess } from "@/lib/backend/schedule";
+import SendUpcomingReminderButton from "./send-upcoming-reminder-button";
+import OpenInMapsLink from "./open-in-maps-link";
 import { formatDateTime } from "@/lib/date-format";
 
 export const instant = false;
 
-function EventCard({ event, label }: { event: ScheduleEvent | null; label: string }) {
+function EventCard({ event, label, canSendReminder = false }: { event: ScheduleEvent | null; label: string; canSendReminder?: boolean }) {
   return (
     <section className="min-w-0 rounded-2xl border border-[#e8e1e9] bg-white p-4 shadow-sm sm:p-5">
       <p className="text-xs font-semibold uppercase tracking-wider text-[#ff6b35]">{label}</p>
@@ -17,9 +20,10 @@ function EventCard({ event, label }: { event: ScheduleEvent | null; label: strin
           <h2 className="mt-2 break-words text-lg font-semibold text-[#17202a] sm:text-xl">{event.title}</h2>
           <dl className="mt-3 space-y-2 text-sm">
             <div><dt className="font-medium text-[#303942]">When</dt><dd className="text-[#69727d]">{formatDateTime(event.starts_at)} &rarr; {formatDateTime(event.ends_at)}</dd></div>
-            {event.location && <div><dt className="font-medium text-[#303942]">Location</dt><dd className="break-words text-[#69727d]">{event.location}</dd></div>}
+            {event.location && <div><dt className="font-medium text-[#303942]">Location</dt><dd className="break-words text-[#69727d]">{event.location}<OpenInMapsLink location={event.location} /></dd></div>}
             {event.notes && <div><dt className="font-medium text-[#303942]">Notes</dt><dd className="whitespace-pre-wrap break-words text-[#69727d]">{event.notes}</dd></div>}
           </dl>
+          {canSendReminder && <SendUpcomingReminderButton eventId={event.id} />}
         </>
       ) : <p className="mt-3 text-sm text-[#69727d]">No upcoming event.</p>}
     </section>
@@ -28,13 +32,13 @@ function EventCard({ event, label }: { event: ScheduleEvent | null; label: strin
 
 export default async function DashboardPage() {
   await connection();
-  const [{ userName, bandName }, { next, nextGig }] = await Promise.all([getDashboardData(), getUpcomingOverviewEvents()]);
+  const [{ userName, bandName }, { next, nextGig }, isAdmin] = await Promise.all([getDashboardData(), getUpcomingOverviewEvents(), getScheduleAccess()]);
   return (
     <DashboardShell active="Overview">
       <PageHeader eyebrow={bandName} title={`Good to see you, ${userName}`} description="Here's what's coming up for your band." />
       <NotificationControls vapidPublicKey={process.env.VAPID_PUBLIC_KEY ?? ""} />
       <div className="mt-6 grid gap-4 sm:mt-8 md:grid-cols-2">
-        <EventCard event={next} label="Next event" />
+        <EventCard event={next} label="Next event" canSendReminder={isAdmin} />
         <EventCard event={nextGig} label="Next gig" />
       </div>
     </DashboardShell>

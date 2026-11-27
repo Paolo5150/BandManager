@@ -24,11 +24,18 @@ export default function FullScheduleCalendar({ events = [], unavailability = [],
       backgroundColor: event.status === "completed" ? "#dff5e9" : "#fff4ed",
       borderColor: event.status === "completed" ? "#78c99a" : "#ffb08e",
       textColor: event.status === "completed" ? "#24734b" : "#a04420",
+      classNames: ["schedule-calendar-event"],
       extendedProps: { scheduleEvent: event },
     })),
-    ...unavailability.map((entry) => ({ id: `unavailable-${entry.id}`, title: `! ${entry.member_name}`, start: calendarValue(entry.start_date), end: calendarValue(entry.end_date), ...unavailableColor(entry.membership_id, entry.member_name), extendedProps: { unavailable: true, memberName: entry.member_name, startDate: entry.start_date, endDate: entry.end_date } })),
-    ...personalEntries.map((entry) => ({ id: entry.id, title: `! ${entry.member_name}`, start: calendarValue(entry.start_date), end: calendarValue(entry.end_date), ...unavailableColor(entry.membership_id, entry.member_name), extendedProps: { personalEntry: entry, memberName: entry.member_name, startDate: entry.start_date, endDate: entry.end_date } })),
+    ...unavailability.map((entry) => ({ id: `unavailable-${entry.id}`, title: `! ${entry.member_name}`, start: calendarValue(entry.start_date), end: calendarValue(entry.end_date), ...unavailableColor(entry.membership_id, entry.member_name), classNames: ["unavailability-calendar-event"], extendedProps: { unavailable: true, memberName: entry.member_name, startDate: entry.start_date, endDate: entry.end_date } })),
+    ...personalEntries.map((entry) => ({ id: entry.id, title: `! ${entry.member_name}`, start: calendarValue(entry.start_date), end: calendarValue(entry.end_date), ...unavailableColor(entry.membership_id, entry.member_name), classNames: ["unavailability-calendar-event"], extendedProps: { personalEntry: entry, memberName: entry.member_name, startDate: entry.start_date, endDate: entry.end_date } })),
   ];
+  const eventDayStyles = new Map<string, "scheduled" | "confirmed">();
+  for (const event of events) {
+    const day = calendarValue(event.starts_at).slice(0, 10);
+    const style = event.status === "completed" ? "confirmed" : "scheduled";
+    if (style === "confirmed" || !eventDayStyles.has(day)) eventDayStyles.set(day, style);
+  }
   return (
     <div className="full-calendar-wrapper">
       <p className="calendar-scroll-hint">Swipe sideways to see the rest of the week.</p>
@@ -38,7 +45,12 @@ export default function FullScheduleCalendar({ events = [], unavailability = [],
         headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek" }}
         height="auto"
         expandRows
-        dayMaxEvents={2}
+        dayMaxEvents={false}
+        dayCellClassNames={(arg) => {
+          const day = `${arg.date.getFullYear()}-${String(arg.date.getMonth() + 1).padStart(2, "0")}-${String(arg.date.getDate()).padStart(2, "0")}`;
+          const style = eventDayStyles.get(day);
+          return style ? [`schedule-day-${style}`] : [];
+        }}
         displayEventTime={false}
         slotDuration="01:00:00"
         events={calendarEvents}

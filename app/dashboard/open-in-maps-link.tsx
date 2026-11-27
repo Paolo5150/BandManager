@@ -1,0 +1,4 @@
+export default function OpenInMapsLink({ location }: { location: string }) {
+  const href = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`;
+  return <a href={href} target="_blank" rel="noopener noreferrer" aria-label={`Open ${location} in Google Maps`} title="Open in Google Maps" className="ml-2 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg align-middle text-[#a04420] hover:bg-[#fff1e9] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff6b35]"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="h-5 w-5"><path d="m9 18-6 3V6l6-3m0 15 6 3m-6-3V3m6 18 6-3V3l-6 3m0 15V6m0 0L9 3" /><circle cx="15" cy="10" r="2.2" /><path d="M15 16s-3.2-3.5-3.2-6a3.2 3.2 0 1 1 6.4 0c0 2.5-3.2 6-3.2 6Z" /></svg></a>;
+}

@@ -31,7 +31,7 @@ export async function POST(request: Request) {
   const response = await fetch(`${context.url}/rest/v1/push_subscriptions?on_conflict=endpoint`, {
     method: "POST",
     headers: { ...context.headers, "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify({ endpoint: payload.endpoint, membership_id: context.membershipId, band_id: context.bandId, subscription: payload, updated_at: new Date().toISOString() }),
+    body: JSON.stringify({ endpoint: payload.endpoint, membership_id: context.membershipId, band_id: context.bandId, subscription: payload, enabled: true, updated_at: new Date().toISOString() }),
     cache: "no-store",
   });
   if (!response.ok) return Response.json({ error: "Unable to save this device subscription." }, { status: 502 });

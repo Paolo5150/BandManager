@@ -21,6 +21,7 @@ type StoredSubscription = {
   id: string;
   membership_id: string;
   subscription: webPush.PushSubscription;
+  enabled: boolean;
 };
 
 let configuredVapidPair = "";
@@ -120,7 +121,7 @@ async function sendToBandMembers(context: { url: string; headers: Record<string,
   if (!membershipResponse.ok) throw new Error("Unable to validate notification recipients.");
   if (members.length !== recipientIds.length) throw new Error("All notification recipients must be confirmed members of your band.");
 
-  const subscriptionsResponse = await fetch(`${context.url}/rest/v1/push_subscriptions?select=id,membership_id,subscription&band_id=eq.${encodeURIComponent(context.bandId)}&membership_id=in.(${membershipQuery})`, { headers: context.headers, cache: "no-store" });
+  const subscriptionsResponse = await fetch(`${context.url}/rest/v1/push_subscriptions?select=id,membership_id,subscription,enabled&enabled=eq.true&band_id=eq.${encodeURIComponent(context.bandId)}&membership_id=in.(${membershipQuery})`, { headers: context.headers, cache: "no-store" });
   const subscriptions = (await subscriptionsResponse.json().catch(() => [])) as StoredSubscription[];
   if (!subscriptionsResponse.ok) throw new Error("Unable to load push subscriptions.");
   if (!subscriptions.length) return { sent: 0, failed: 0, expired: 0 };
@@ -133,7 +134,8 @@ async function sendToBandMembers(context: { url: string; headers: Record<string,
       return { sent: 1, failed: 0, expiredId: null as string | null };
     } catch (error) {
       const status = (error as { statusCode?: number }).statusCode;
-      return { sent: 0, failed: 1, expiredId: status === 404 || status === 410 ? entry.id : null };
+      const expired = status === 404 || status === 410;
+      return { sent: 0, failed: expired ? 0 : 1, expiredId: expired ? entry.id : null };
     }
   }));
 

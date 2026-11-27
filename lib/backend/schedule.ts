@@ -17,12 +17,16 @@ export async function getEventCharges(eventId: string): Promise<EventCharge[]> {
   const response = await fetch(`${context.url}/rest/v1/event_charges?select=id,membership_id,member_name,amount_cents&event_id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}`, { headers: context.headers, cache: "no-store" });
   if (!response.ok) return [];
   const charges = (await response.json().catch(() => [])) as EventCharge[];
-  const ids = charges.map((charge) => charge.membership_id).filter((id): id is string => Boolean(id));
-  if (!ids.length) return charges;
-  const membershipResponse = await fetch(`${context.url}/rest/v1/memberships?select=id,display_name&band_id=eq.${encodeURIComponent(context.bandId)}&id=in.(${ids.map(encodeURIComponent).join(",")})`, { headers: context.headers, cache: "no-store" });
+  const membershipResponse = await fetch(`${context.url}/rest/v1/memberships?select=id,display_name&band_id=eq.${encodeURIComponent(context.bandId)}&confirmed=eq.true&order=display_name.asc`, { headers: context.headers, cache: "no-store" });
   const memberships = (await membershipResponse.json().catch(() => [])) as { id: string; display_name?: string | null }[];
-  const names = new Map(memberships.map((membership) => [membership.id, membership.display_name || "Member"]));
-  return charges.map((charge) => ({ ...charge, member_name: charge.member_name || (charge.membership_id ? names.get(charge.membership_id) : undefined) || "Member" }));
+  if (!membershipResponse.ok) return charges;
+  const existingByMembership = new Map(charges.filter((charge) => charge.membership_id).map((charge) => [charge.membership_id!, charge]));
+  return memberships.map((membership) => {
+    const existing = existingByMembership.get(membership.id);
+    return existing
+      ? { ...existing, member_name: existing.member_name || membership.display_name || "Member" }
+      : { id: `new:${membership.id}`, membership_id: membership.id, member_name: membership.display_name || "Member", amount_cents: 0 };
+  });
 }
 
 export async function updateEventCharges(formData: FormData): Promise<{ error?: string }> {
@@ -315,19 +319,35 @@ export async function confirmScheduleEvent(formData: FormData): Promise<{ error?
   const chargesResponse = await fetch(`${context.url}/rest/v1/event_charges?select=id,membership_id,member_name,amount_cents&event_id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}`, { headers: context.headers, cache: "no-store" });
   const charges = (await chargesResponse.json().catch(() => [])) as EventCharge[];
   if (!chargesResponse.ok) return { error: "Unable to load event charges." };
-  const submittedCharges = charges.map((charge) => ({ ...charge, amount_cents: Math.round((Number(formData.get(`charge_${charge.id}`) ?? charge.amount_cents / 100) || 0) * 100) }));
+  const membersResponse = await fetch(`${context.url}/rest/v1/memberships?select=id,display_name&band_id=eq.${encodeURIComponent(context.bandId)}&confirmed=eq.true`, { headers: context.headers, cache: "no-store" });
+  const members = (await membersResponse.json().catch(() => [])) as { id: string; display_name?: string | null }[];
+  if (!membersResponse.ok) return { error: "Unable to load band members." };
+  const existingByMembership = new Map(charges.filter((charge) => charge.membership_id).map((charge) => [charge.membership_id!, charge]));
+  const submittedCharges = members.map((member) => {
+    const existing = existingByMembership.get(member.id);
+    const amountCents = Math.round((Number(formData.get(`charge_${existing?.id ?? `new:${member.id}`}`) ?? (existing?.amount_cents ?? 0) / 100) || 0) * 100);
+    return { id: existing?.id ?? `new:${member.id}`, membership_id: member.id, member_name: existing?.member_name || member.display_name || "Member", amount_cents: amountCents, isNew: !existing };
+  });
   const totalCharges = submittedCharges.reduce((sum, charge) => sum + charge.amount_cents, 0);
   if (totalCharges !== Math.round(Number(eventRows[0].cost_cents ?? 0))) return { error: "Member charges must add up exactly to the event cost." };
   const updateResponse = await fetch(`${context.url}/rest/v1/events?id=eq.${encodeURIComponent(eventId)}&band_id=eq.${encodeURIComponent(context.bandId)}&status=eq.scheduled`, { method: "PATCH", headers: { ...context.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ status: "completed" }), cache: "no-store" });
   if (!updateResponse.ok) return { error: "Unable to complete the event." };
+  const newChargeRows = submittedCharges.filter((charge) => charge.isNew && charge.amount_cents > 0).map((charge) => ({ band_id: context.bandId, event_id: eventId, membership_id: charge.membership_id, amount_cents: charge.amount_cents }));
+  const createdCharges = new Map<string, string>();
+  if (newChargeRows.length) {
+    const inserted = await fetch(`${context.url}/rest/v1/event_charges`, { method: "POST", headers: { ...context.headers, "Content-Type": "application/json", Prefer: "return=representation" }, body: JSON.stringify(newChargeRows), cache: "no-store" });
+    const created = (await inserted.json().catch(() => [])) as { id: string; membership_id: string }[];
+    if (!inserted.ok) return { error: "Event completed, but new member charges could not be saved." };
+    for (const row of created) createdCharges.set(row.membership_id, row.id);
+  }
+  const chargeIds = submittedCharges.filter((charge) => !charge.isNew || createdCharges.has(charge.membership_id)).map((charge) => charge.isNew ? createdCharges.get(charge.membership_id)! : charge.id);
   let chargedMembershipIds: string[] = [];
-  if (charges.length) {
-    const chargeIds = submittedCharges.map((charge) => charge.id);
+  if (chargeIds.length) {
     const existingResponse = await fetch(`${context.url}/rest/v1/member_ledger?select=event_charge_id&band_id=eq.${encodeURIComponent(context.bandId)}&event_charge_id=in.(${chargeIds.map(encodeURIComponent).join(",")})`, { headers: context.headers, cache: "no-store" });
     const existing = (await existingResponse.json().catch(() => [])) as { event_charge_id?: string | null }[];
     if (!existingResponse.ok) return { error: "Unable to check existing member charges." };
     const existingIds = new Set(existing.map((entry) => entry.event_charge_id).filter((id): id is string => Boolean(id)));
-    const ledgerRows = submittedCharges.filter((charge): charge is typeof charge & { membership_id: string } => Boolean(charge.membership_id) && charge.amount_cents > 0 && !existingIds.has(charge.id)).map((charge) => ({ band_id: context.bandId, membership_id: charge.membership_id, member_name: charge.member_name, kind: "charge", amount_cents: -Math.abs(charge.amount_cents), event_charge_id: charge.id, created_by: context.userId }));
+    const ledgerRows = submittedCharges.filter((charge) => charge.amount_cents > 0).map((charge) => ({ ...charge, id: charge.isNew ? createdCharges.get(charge.membership_id)! : charge.id })).filter((charge) => charge.id && !existingIds.has(charge.id)).map((charge) => ({ band_id: context.bandId, membership_id: charge.membership_id, member_name: charge.member_name, kind: "charge", amount_cents: -Math.abs(charge.amount_cents), event_charge_id: charge.id, created_by: context.userId, added_by: context.membershipId }));
     chargedMembershipIds = [...new Set(ledgerRows.map((row) => row.membership_id))];
     if (!ledgerRows.length) { revalidatePath("/dashboard/schedule"); revalidatePath("/dashboard/finance"); return {}; }
     const ledgerResponse = await fetch(`${context.url}/rest/v1/member_ledger`, { method: "POST", headers: { ...context.headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify(ledgerRows), cache: "no-store" });

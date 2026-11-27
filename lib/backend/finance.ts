@@ -20,13 +20,13 @@ export async function addFunds(formData: FormData): Promise<{ error?: string; no
   const user = (await auth.json().catch(() => null)) as { id?: string } | null;
   if (!auth.ok || !user?.id) return { error: "You must be signed in." };
   const headers = { apikey: secret, Authorization: `Bearer ${secret}` };
-  const ownResponse = await fetch(`${url}/rest/v1/memberships?select=band_id,role&user_id=eq.${encodeURIComponent(user.id)}&confirmed=eq.true&limit=1`, { headers, cache: "no-store" });
-  const own = (await ownResponse.json().catch(() => null)) as { band_id?: string; role?: string }[] | null;
+  const ownResponse = await fetch(`${url}/rest/v1/memberships?select=id,band_id,role&user_id=eq.${encodeURIComponent(user.id)}&confirmed=eq.true&limit=1`, { headers, cache: "no-store" });
+  const own = (await ownResponse.json().catch(() => null)) as { id?: string; band_id?: string; role?: string }[] | null;
   if (!own?.[0]?.band_id || !["admin", "financial_admin"].includes(own[0].role ?? "")) return { error: "Only admins or financial admins can add funds." };
   const targetResponse = await fetch(`${url}/rest/v1/memberships?select=id,display_name&band_id=eq.${encodeURIComponent(own[0].band_id)}&id=eq.${encodeURIComponent(membershipId)}&confirmed=eq.true&limit=1`, { headers, cache: "no-store" });
   const target = (await targetResponse.json().catch(() => null)) as { id?: string; display_name?: string | null }[] | null;
   if (!target?.[0]?.id) return { error: "Member not found in your band." };
-  const response = await fetch(`${url}/rest/v1/member_ledger`, { method: "POST", headers: { ...headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ band_id: own[0].band_id, membership_id: membershipId, member_name: target[0].display_name, kind: "deposit", amount_cents: amountCents, note, created_by: user.id }), cache: "no-store" });
+  const response = await fetch(`${url}/rest/v1/member_ledger`, { method: "POST", headers: { ...headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ band_id: own[0].band_id, membership_id: membershipId, member_name: target[0].display_name, kind: "deposit", amount_cents: amountCents, note, created_by: user.id, added_by: own[0].id }), cache: "no-store" });
   if (!response.ok) return { error: "Unable to add funds." };
   revalidatePath("/dashboard/finance");
   try {
@@ -52,13 +52,13 @@ export async function addBalanceAdjustment(formData: FormData): Promise<{ error?
   const user = (await auth.json().catch(() => null)) as { id?: string } | null;
   if (!auth.ok || !user?.id) return { error: "You must be signed in." };
   const headers = { apikey: secret, Authorization: `Bearer ${secret}` };
-  const ownResponse = await fetch(`${url}/rest/v1/memberships?select=band_id,role&user_id=eq.${encodeURIComponent(user.id)}&confirmed=eq.true&limit=1`, { headers, cache: "no-store" });
-  const own = (await ownResponse.json().catch(() => null)) as { band_id?: string; role?: string }[] | null;
+  const ownResponse = await fetch(`${url}/rest/v1/memberships?select=id,band_id,role&user_id=eq.${encodeURIComponent(user.id)}&confirmed=eq.true&limit=1`, { headers, cache: "no-store" });
+  const own = (await ownResponse.json().catch(() => null)) as { id?: string; band_id?: string; role?: string }[] | null;
   if (!own?.[0]?.band_id || own[0].role !== "admin") return { error: "Only admins can adjust member balances." };
   const targetResponse = await fetch(`${url}/rest/v1/memberships?select=id,display_name&band_id=eq.${encodeURIComponent(own[0].band_id)}&id=eq.${encodeURIComponent(membershipId)}&confirmed=eq.true&limit=1`, { headers, cache: "no-store" });
   const target = (await targetResponse.json().catch(() => null)) as { id?: string; display_name?: string | null }[] | null;
   if (!target?.[0]?.id) return { error: "Member not found in your band." };
-  const response = await fetch(`${url}/rest/v1/member_ledger`, { method: "POST", headers: { ...headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ band_id: own[0].band_id, membership_id: membershipId, member_name: target[0].display_name, kind: "adjustment", amount_cents: amountCents, note, created_by: user.id }), cache: "no-store" });
+  const response = await fetch(`${url}/rest/v1/member_ledger`, { method: "POST", headers: { ...headers, "Content-Type": "application/json", Prefer: "return=minimal" }, body: JSON.stringify({ band_id: own[0].band_id, membership_id: membershipId, member_name: target[0].display_name, kind: "adjustment", amount_cents: amountCents, note, created_by: user.id, added_by: own[0].id }), cache: "no-store" });
   if (!response.ok) return { error: "Unable to save the balance adjustment." };
   revalidatePath("/dashboard/finance");
   try {
