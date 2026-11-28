@@ -43,9 +43,15 @@ export default function DashboardShell({ active, wide = false, children }: { act
             </NavigationLink>
           ))}
         </nav>
-        <form action={logout} className="border-t border-[#eee9e3] pt-4">
-          <LogoutButton className="w-full rounded-xl px-3 py-3 text-left text-sm font-medium text-[#69727d] transition hover:bg-[#f8f5f1] hover:text-[#17202a]" />
-        </form>
+        <div className="border-t border-[#eee9e3] pt-4">
+          <Link href="/dashboard/account" aria-current={active === "Account" ? "page" : undefined} className={`mb-1 flex items-center gap-2 rounded-xl px-3 py-3 text-sm font-medium transition ${active === "Account" ? "bg-[#fff1e9] text-[#e95a27]" : "text-[#69727d] hover:bg-[#f8f5f1] hover:text-[#17202a]"}`}>
+            <AccountIcon className="h-5 w-5" />
+            Account
+          </Link>
+          <form action={logout}>
+            <LogoutButton className="w-full rounded-xl px-3 py-3 text-left text-sm font-medium text-[#69727d] transition hover:bg-[#f8f5f1] hover:text-[#17202a]" />
+          </form>
+        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
