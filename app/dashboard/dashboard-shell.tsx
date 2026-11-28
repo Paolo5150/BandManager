@@ -5,11 +5,23 @@ import LogoutButton from "./logout-button";
 import { navigation } from "./navigation";
 import InstallPrompt from "../install-prompt";
 
+const APP_VERSION = "1.0.0"; // TODO: dynamically get this from package.json or environment variable
+
 function Logo() {
+
   return (
     <div className="flex items-center gap-2.5">
-      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#ff6b35] text-base font-bold text-white">B</div>
-      <span className="font-semibold tracking-tight text-[#17202a]">BandManager</span>
+      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#ff6b35] text-base font-bold text-white">
+        B
+      </div>
+      <div className="flex flex-col">
+        <span className="font-semibold tracking-tight text-[#17202a]">
+          BandManager
+        </span>
+        <span className="text-[10px] text-gray-400">
+          {APP_VERSION}
+        </span>
+      </div>
     </div>
   );
 }
