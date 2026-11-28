@@ -5,7 +5,7 @@ import LogoutButton from "./logout-button";
 import { navigation } from "./navigation";
 import InstallPrompt from "../install-prompt";
 
-const APP_VERSION = "1.0.0"; // TODO: dynamically get this from package.json or environment variable
+const APP_VERSION = "1.1.0"; // TODO: dynamically get this from package.json or environment variable
 
 function Logo() {
 

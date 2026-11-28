@@ -7,4 +7,5 @@ export const navigation = [
   { label: "Schedule", href: "/dashboard/schedule" },
   { label: "Unavailability", href: "/dashboard/unavailability" },
   { label: "Finance", href: "/dashboard/finance" },
+  { label: "Account", href: "/dashboard/account" },
 ];

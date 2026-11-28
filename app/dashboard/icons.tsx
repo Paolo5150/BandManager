@@ -20,3 +20,4 @@ export const ChevronRightIcon = (props: IconProps) => <Svg {...props}><path d="m
 export const ChevronUpIcon = (props: IconProps) => <Svg {...props}><path d="m18 15-6-6-6 6" /></Svg>;
 export const ChevronDownIcon = (props: IconProps) => <Svg {...props}><path d="m6 9 6 6 6-6" /></Svg>;
 export const GripIcon = (props: IconProps) => <Svg {...props} strokeWidth={3}><path d="M9 6h.01M9 12h.01M9 18h.01M15 6h.01M15 12h.01M15 18h.01" /></Svg>;
+export const AccountIcon = (props: IconProps) => <Svg {...props}><circle cx="12" cy="8" r="4" /><path d="M5 21a7 7 0 0 1 14 0" /></Svg>;
