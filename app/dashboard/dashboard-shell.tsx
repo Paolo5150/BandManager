@@ -7,7 +7,7 @@ import { navigation } from "./navigation";
 import InstallPrompt from "../install-prompt";
 import { AccountIcon } from "./icons";
 
-const APP_VERSION = "1.1.1"; // TODO: dynamically get this from package.json or environment variable
+const APP_VERSION = "1.1.2"; // TODO: dynamically get this from package.json or environment variable
 
 function Logo() {
 
