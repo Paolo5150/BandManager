@@ -1,11 +1,13 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { logout } from "@/lib/backend/dashboard-data";
 import NavigationLink from "./navigation-link";
 import LogoutButton from "./logout-button";
 import { navigation } from "./navigation";
 import InstallPrompt from "../install-prompt";
+import { AccountIcon } from "./icons";
 
-const APP_VERSION = "1.1.0"; // TODO: dynamically get this from package.json or environment variable
+const APP_VERSION = "1.1.1"; // TODO: dynamically get this from package.json or environment variable
 
 function Logo() {
 
@@ -50,9 +52,14 @@ export default function DashboardShell({ active, wide = false, children }: { act
         <header className="sticky top-0 z-40 border-b border-[#e8e1e9] bg-white/95 backdrop-blur md:hidden">
           <div className="flex items-center justify-between px-4 pt-3">
             <Logo />
-            <form action={logout}>
-              <LogoutButton className="rounded-lg px-2 py-1.5 text-sm font-medium text-[#69727d] hover:bg-[#f8f5f1]" />
-            </form>
+            <div className="flex items-center gap-1">
+              <Link href="/dashboard/account" aria-label="Account" title="Account" aria-current={active === "Account" ? "page" : undefined} className={`flex h-10 w-10 items-center justify-center rounded-xl transition ${active === "Account" ? "bg-[#fff1e9] text-[#e95a27]" : "text-[#69727d] hover:bg-[#f8f5f1] hover:text-[#17202a]"}`}>
+                <AccountIcon className="h-5 w-5" />
+              </Link>
+              <form action={logout}>
+                <LogoutButton iconOnly className="flex h-10 w-10 items-center justify-center rounded-xl text-[#69727d] transition hover:bg-[#f8f5f1] hover:text-[#17202a]" />
+              </form>
+            </div>
           </div>
           <nav className="flex gap-1 overflow-x-auto px-3 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Mobile dashboard navigation">
             {navigation.map((item) => (
