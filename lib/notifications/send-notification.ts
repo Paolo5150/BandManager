@@ -57,6 +57,18 @@ export async function sendNotification(input: {
   return sendToBandMembers(context, input.recipientMembershipIds, input.notification);
 }
 
+/** Sends a notification for a trusted cron caller using server-side credentials. */
+export async function sendCronNotification(input: {
+  bandId: string;
+  recipientMembershipIds: string[];
+  notification: PushNotificationPayload;
+}): Promise<SendNotificationResult> {
+  const url = process.env.SUPABASE_URL;
+  const secret = process.env.SUPABASE_SECRET_KEY;
+  if (!url || !secret) throw new Error("Supabase server credentials are not configured.");
+  return sendToBandMembers({ url, headers: { apikey: secret, Authorization: `Bearer ${secret}` }, bandId: input.bandId }, input.recipientMembershipIds, input.notification);
+}
+
 /** Finance staff can notify one member in their own band after a ledger change. */
 export async function sendMemberFinanceNotification(input: {
   membershipId: string;

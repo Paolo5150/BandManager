@@ -34,3 +34,21 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Scheduled push notifications
+
+Set a strong `CRON_SECRET` in the application environment. A trusted scheduler can send a push notification with `POST /api/notifications/send`, using `Authorization: Bearer <CRON_SECRET>` and a JSON body like:
+
+```json
+{
+  "bandId": "<band UUID>",
+  "recipientMembershipIds": ["<confirmed membership UUID>"],
+  "notification": {
+    "title": "Upcoming rehearsal",
+    "body": "Rehearsal starts tomorrow at 7 PM.",
+    "url": "/dashboard/schedule"
+  }
+}
+```
+
+The endpoint requires `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `VAPID_PUBLIC_KEY`, and `VAPID_PRIVATE_KEY` to be configured on the server. Recipients must be confirmed members of the specified band. Requests can target at most 500 memberships; omit `url` to open `/dashboard` when a notification is clicked.
